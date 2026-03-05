@@ -10,11 +10,12 @@ extension HexColor on Color {
   }
 
   /// Prefixes a hash sign if [leadingHashSign] is set to `true` (default is `true`).
-  String toHex({bool leadingHashSign = true}) => '${leadingHashSign ? '#' : ''}'
-      '${alpha.toRadixString(16).padLeft(2, '0')}'
-      '${red.toRadixString(16).padLeft(2, '0')}'
-      '${green.toRadixString(16).padLeft(2, '0')}'
-      '${blue.toRadixString(16).padLeft(2, '0')}';
+  String toHex({bool leadingHashSign = true}) =>
+      '${leadingHashSign ? '#' : ''}'
+      '${((a * 255.0).round().clamp(0, 255)).toRadixString(16).padLeft(2, '0')}'
+      '${((r * 255.0).round().clamp(0, 255)).toRadixString(16).padLeft(2, '0')}'
+      '${((g * 255.0).round().clamp(0, 255)).toRadixString(16).padLeft(2, '0')}'
+      '${((b * 255.0).round().clamp(0, 255)).toRadixString(16).padLeft(2, '0')}';
 }
 
 // final mainColor = HexColor.fromHex('#054D9F');
@@ -43,8 +44,10 @@ final headerStyleItem = TextStyle(
   fontSize: 16,
   color: HexColor.fromHex('#808080'),
 );
-final myFonntStyleItem =
-    TextStyle(fontSize: 12, color: Colors.black.withOpacity(0.8));
+final myFonntStyleItem = TextStyle(
+  fontSize: 12,
+  color: Colors.black.withValues(alpha: 0.8),
+);
 final iconColors = HexColor.fromHex('#808080');
 
 // alertLoading({required BuildContext context, String? title, Function}) {

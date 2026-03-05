@@ -49,6 +49,8 @@ class _RecordButtonV2State extends State<RecordButtonV2> {
   bool _inDeleteZone = false;
   bool _isRecording = false;
   bool _isStopping = false; // Flag to prevent multiple stop calls
+  bool _isStartingRecording =
+      false; // Lock to prevent concurrent start attempts
   DateTime? _recordingStartTime;
   String? _currentFilePath;
 
@@ -92,19 +94,45 @@ class _RecordButtonV2State extends State<RecordButtonV2> {
   }
 
   Future<void> _startRecording() async {
-    try {
-      // Send pointer down event to controller
-      widget.recordingController.onPointerDown();
+    // Prevent concurrent recording start attempts (race condition guard)
+    if (_isStartingRecording) {
+      widget.logger.d(
+        '_startRecording: Already starting, ignoring concurrent call',
+      );
+      return;
+    }
 
-      final hasPermission = await widget.hasPermission();
-      if (!hasPermission) {
-        final granted = await widget.requestPermission();
-        if (!granted) {
-          widget.recordingController.cancel();
-          return;
-        }
+    _isStartingRecording = true;
+
+    try {
+      // Call onPointerDown() which handles two separate flows:
+      //
+      // FLOW 1 (Permission Not Granted): Permission-only flow
+      //   - Shows permisison dialog
+      //   - Blocks until user grants or denies
+      //   - NO state transitions, NO timers
+      //   - Returns false (permission acquired but recording not started)
+      //   - User must tap again to actually record
+      //
+      // FLOW 2 (Permission Already Granted): Recording flow
+      //   - Transitions to tapMode state
+      //   - Starts 500ms hold timer + 100ms duration timer
+      //   - Returns true (ready to record, proceed with audio setup)
+      final permissionGranted = await widget.recordingController.onPointerDown(
+        hasPermission: widget.hasPermission,
+        requestPermission: widget.requestPermission,
+      );
+
+      if (!permissionGranted) {
+        // Flow 1: Permission request completed (or denied)
+        // Controller is in notRecording state, no timers running
+        // User must tap again to start recording after granting permission
+        widget.logger.d('Recording not started (permission flow or denied)');
+        return;
       }
 
+      // Flow 2: Permission already granted, state transitions completed
+      // Now safe to start audio recording
       // Create temp file path
       final tempDir = await getTemporaryDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
@@ -144,6 +172,9 @@ class _RecordButtonV2State extends State<RecordButtonV2> {
       widget.onRecordingStart();
     } catch (e) {
       widget.recordingController.cancel();
+      widget.logger.e('Error during recording start: $e');
+    } finally {
+      _isStartingRecording = false;
     }
   }
 
@@ -275,7 +306,7 @@ class _RecordButtonV2State extends State<RecordButtonV2> {
         onTapDown: (details) async {
           _updateButtonPosition();
           if (widget.recordingController.isNotRecording) {
-            // Start new recording
+            // Start new recording - _startRecording() awaits permission check
             await _startRecording();
           } else if (widget.recordingController.isTapMode) {
             // Tap again in tap mode = cancel
@@ -283,7 +314,12 @@ class _RecordButtonV2State extends State<RecordButtonV2> {
           }
         },
         onTapUp: (details) async {
-          // Send pointer up event to controller
+          // Only process pointer up if recording actually started (permission was granted and state transition happened)
+          if (!_isRecording) {
+            // Permission was denied or recording never started - nothing to do
+            return;
+          }
+
           final nearButton = _isNearButton(details.globalPosition);
           widget.logger.d(
             'onTapUp: nearButton=$nearButton, isHoldMode=${widget.recordingController.isHoldMode}, isRecording=$_isRecording',
@@ -298,10 +334,13 @@ class _RecordButtonV2State extends State<RecordButtonV2> {
         onVerticalDragStart: (details) async {
           if (!_isRecording) {
             _updateButtonPosition();
+            // _startRecording() awaits permission check in onPointerDown().
+            // If permission denied, _isRecording stays false, so drag operations below won't run.
             await _startRecording();
           }
         },
         onVerticalDragUpdate: (details) {
+          // Safe: only runs if _isRecording=true, which means permission was granted
           if (_isRecording && mounted) {
             final inDeleteZone = !_isNearButton(details.globalPosition);
             if (inDeleteZone != _inDeleteZone) {
@@ -319,6 +358,7 @@ class _RecordButtonV2State extends State<RecordButtonV2> {
           widget.logger.d(
             'onVerticalDragEnd: isRecording=$_isRecording, isHoldMode=${widget.recordingController.isHoldMode}, inDeleteZone=$_inDeleteZone',
           );
+          // Safe: only runs if _isRecording=true, which means permission was granted in onVerticalDragStart
           if (_isRecording && mounted) {
             if (widget.recordingController.isHoldMode) {
               // In hold mode, directly stop/cancel based on position

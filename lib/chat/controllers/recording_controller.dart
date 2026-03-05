@@ -18,6 +18,8 @@ class RecordingController extends ChangeNotifier {
   bool _pointerReleased =
       false; // Flag to track if user released pointer before 500ms
   bool _sendRequested = false; // Flag to indicate send button was pressed
+  bool _isRequestingPermission =
+      false; // Lock to prevent concurrent permission requests
 
   // Amplitude/volume stream
   final StreamController<double> _amplitudeController =
@@ -44,9 +46,67 @@ class RecordingController extends ChangeNotifier {
   }
 
   /// Called when user presses down on the record button
-  void onPointerDown() {
+  ///
+  /// TWO SEPARATE FLOWS:
+  ///
+  /// FLOW 1 - Permission Request Only (if permission not yet granted):
+  ///   - No state transitions, no timers, no recording
+  ///   - Blocks on permission dialog
+  ///   - Returns false regardless (permission acquired but recording not started)
+  ///   - User must tap again to record
+  ///
+  /// FLOW 2 - Recording (if permission already granted):
+  ///   - Transitions to tapMode state
+  ///   - Starts 500ms hold timer + 100ms duration timer
+  ///   - Returns true (ready to record)
+  Future<bool> onPointerDown({
+    required Future<bool> Function() hasPermission,
+    required Future<bool> Function() requestPermission,
+  }) async {
     if (_state == RecordingState.notRecording) {
-      // Transition to tap mode and start recording
+      // STEP 1: Check permission status to determine which flow to enter
+      bool permissionAlreadyGranted = await hasPermission();
+
+      if (!permissionAlreadyGranted) {
+        // ============================================
+        // FLOW 1: PERMISSION-ONLY (No Recording)
+        // ============================================
+
+        // Guard against concurrent permission requests
+        if (_isRequestingPermission) {
+          logger.d(
+            'onPointerDown: Permission request already in progress, ignoring',
+          );
+          return false;
+        }
+
+        _isRequestingPermission = true;
+        try {
+          logger.d(
+            'onPointerDown: Permission not granted, entering permission-only flow',
+          );
+
+          // Block on permission dialog - user must grant or deny
+          await requestPermission();
+
+          // Regardless of whether user granted or denied, stay in idle state
+          // No state transitions, no timers started
+          logger.d(
+            'onPointerDown: Permission flow complete. Returning to idle (user must tap again to record).',
+          );
+          return false; // Never start recording in this flow
+        } finally {
+          _isRequestingPermission = false;
+        }
+      }
+
+      // ============================================
+      // FLOW 2: RECORDING (Permission Already Granted)
+      // ============================================
+
+      logger.d(
+        'onPointerDown: Permission already granted, entering recording flow',
+      );
       _state = RecordingState.tapMode;
       _recordingDurationMs = 0;
       _pointerReleased = false; // Reset flag
@@ -57,17 +117,23 @@ class RecordingController extends ChangeNotifier {
         // Check if pointer was released before timer expired
         if (!_pointerReleased && _state == RecordingState.tapMode) {
           // User still holding after 500ms, transition to hold mode
+          logger.d(
+            'onPointerDown: Hold timer expired, transitioning to holdMode',
+          );
           _state = RecordingState.holdMode;
           notifyListeners();
         }
-        // If _pointerReleased is true, stay in tap mode
       });
 
       _startRecordingTimer();
+      return true; // State transition successful, ready to record
     } else if (_state == RecordingState.tapMode) {
       // Tap again while in tap mode = cancel and discard
+      logger.d('onPointerDown: Already in tapMode, canceling');
       cancel();
+      return false;
     }
+    return false;
   }
 
   /// Called when user releases the pointer
@@ -166,6 +232,7 @@ class RecordingController extends ChangeNotifier {
     _currentRecordingPath = null;
     _pointerReleased = false;
     _sendRequested = false;
+    _isRequestingPermission = false; // Clear permission request lock on reset
   }
 
   @override

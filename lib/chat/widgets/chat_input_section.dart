@@ -44,8 +44,6 @@ class _ChatInputSectionState extends State<ChatInputSection> {
   late FocusNode _textInputFocusNode;
   final ImagePicker _imagePicker = ImagePicker();
   bool _isRecording = false;
-  int _recordingDurationSeconds = 0;
-  Timer? _recordingTimer;
   Stream<double>? _volumeStream;
   String? _pendingRecordingPath;
   int? _pendingRecordingDurationMs;
@@ -59,6 +57,9 @@ class _ChatInputSectionState extends State<ChatInputSection> {
 
     // Wire up amplitude stream from recording controller
     _volumeStream = widget.recordingController.amplitudeStream;
+
+    // Listen to recording controller state changes to rebuild when duration updates
+    widget.recordingController.addListener(_onRecordingControllerChanged);
   }
 
   @override
@@ -66,7 +67,7 @@ class _ChatInputSectionState extends State<ChatInputSection> {
     textInputMessageController.dispose();
     _textInputFocusNode.removeListener(_onFocusChange);
     _textInputFocusNode.dispose();
-    _recordingTimer?.cancel();
+    widget.recordingController.removeListener(_onRecordingControllerChanged);
     super.dispose();
   }
 
@@ -74,37 +75,35 @@ class _ChatInputSectionState extends State<ChatInputSection> {
     setState(() {});
   }
 
+  /// Called when recording controller state changes (duration updates, state transitions)
+  void _onRecordingControllerChanged() {
+    // Rebuild to update the display with new duration from controller
+    setState(() {});
+  }
+
   void _handleRecordingStart() {
     setState(() {
       _isRecording = true;
-      _recordingDurationSeconds = 0;
-    });
-
-    _recordingTimer = Timer.periodic(const Duration(milliseconds: 100), (
-      timer,
-    ) {
-      setState(() {
-        _recordingDurationSeconds = timer.tick;
-      });
     });
 
     widget.onRecordingStart();
   }
 
   void _handleRecordingCancel() {
-    _recordingTimer?.cancel();
     setState(() {
       _isRecording = false;
-      _recordingDurationSeconds = 0;
     });
     widget.onRecordingCancel();
   }
 
-  String _formatRecordingTime(int tenthsOfSeconds) {
-    final seconds = tenthsOfSeconds ~/ 10;
-    final tenths = tenthsOfSeconds % 10;
-    final minutes = seconds ~/ 60;
-    final secs = seconds % 60;
+  /// Format recording duration to MM:SS.T format (e.g., "01:23.4")
+  /// Duration is in milliseconds from RecordingController
+  String _formatRecordingTime(int durationMilliseconds) {
+    final totalSeconds = durationMilliseconds ~/ 1000;
+    final milliseconds = durationMilliseconds % 1000;
+    final tenths = milliseconds ~/ 100; // First digit of milliseconds
+    final minutes = totalSeconds ~/ 60;
+    final secs = totalSeconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}.$tenths';
   }
 
@@ -118,7 +117,9 @@ class _ChatInputSectionState extends State<ChatInputSection> {
       textController: textInputMessageController,
       focusNode: _textInputFocusNode,
       volumeStream: _volumeStream ?? Stream.empty(),
-      timerText: _formatRecordingTime(_recordingDurationSeconds),
+      timerText: _formatRecordingTime(
+        widget.recordingController.recordingDurationMs,
+      ),
       onPickFile: () async {
         widget.recordingController.cancel();
         try {
@@ -226,7 +227,7 @@ class _ChatInputSectionState extends State<ChatInputSection> {
           widget.chatConfig.logger.d(
             'onRecordingComplete: filePath=$filePath, durationMs=$durationMs, sendRequested=${widget.recordingController.sendRequested}',
           );
-          _recordingTimer?.cancel();
+          // Timer is managed by recordingController, no need to cancel here
 
           // Check if this was triggered by send button press (sendRequested flag)
           // vs automatic completion
@@ -259,14 +260,12 @@ class _ChatInputSectionState extends State<ChatInputSection> {
             // Reset button state immediately
             setState(() {
               _isRecording = false;
-              _recordingDurationSeconds = 0;
             });
             widget.onMessageSent();
           } else {
             // Recording completed without send button: store for later sending
             setState(() {
               _isRecording = false;
-              _recordingDurationSeconds = 0;
               _pendingRecordingPath = filePath;
               _pendingRecordingDurationMs = durationMs;
             });
@@ -289,7 +288,6 @@ class _ChatInputSectionState extends State<ChatInputSection> {
         // Check if there's a pending recording to send (hold mode)
         if (_pendingRecordingPath != null &&
             _pendingRecordingDurationMs != null) {
-          _recordingTimer?.cancel();
           try {
             final chatService = widget.chatService;
             await chatService.sendVoiceRecording(
@@ -300,7 +298,6 @@ class _ChatInputSectionState extends State<ChatInputSection> {
             // Clear pending recording and reset state
             setState(() {
               _isRecording = false;
-              _recordingDurationSeconds = 0;
               _pendingRecordingPath = null;
               _pendingRecordingDurationMs = null;
             });
