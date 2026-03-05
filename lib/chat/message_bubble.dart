@@ -1,0 +1,275 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'config/chat_theme_provider.dart';
+import 'models.dart';
+
+class MessageBubble extends StatelessWidget {
+  final Message message;
+  final bool isSelf;
+  final bool isLastFromSender;
+  final Future<void> Function(Map<String, dynamic>, String) onAttachmentTap;
+  final Widget Function(Map<String, dynamic>, bool, Message)
+  buildAttachmentWidget;
+
+  const MessageBubble({
+    super.key,
+    required this.message,
+    required this.isSelf,
+    required this.isLastFromSender,
+    required this.onAttachmentTap,
+    required this.buildAttachmentWidget,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = ChatThemeProvider.of(context);
+    final hasAttachments = message.attachments != null;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Align(
+        alignment: isSelf ? Alignment.centerRight : Alignment.centerLeft,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth:
+                MediaQuery.of(context).size.width *
+                (hasAttachments ? 0.75 : 0.60),
+          ),
+          child: Column(
+            crossAxisAlignment: isSelf
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            children: [
+              // Text-only message (no attachments)
+              if (message.text != null && message.attachments == null)
+                Opacity(
+                  opacity: message.isSending
+                      ? 0.6
+                      : (message.isDeleted ? 0.5 : 1.0),
+                  child: Container(
+                    margin: const EdgeInsets.all(4),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: message.isDeleted
+                          ? theme.messageDeletedBackground
+                          : (isSelf
+                                ? theme.messageSentBackground
+                                : (message.isSending
+                                      ? theme.messageReceivedBackground
+                                      : theme.messageReceivedBackground)),
+                      borderRadius: BorderRadius.circular(8.r),
+                      border: message.isDeleted
+                          ? Border.all(color: theme.borderColor, width: 1)
+                          : null,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SelectableText(
+                          message.text!,
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            color: message.isDeleted
+                                ? theme.messageDeletedText
+                                : (isSelf
+                                      ? theme.messageSentText
+                                      : theme.messageReceivedText),
+                            decoration: message.isDeleted
+                                ? TextDecoration.lineThrough
+                                : null,
+                            decorationColor: theme.messageDeletedText,
+                            fontStyle: message.isDeleted
+                                ? FontStyle.italic
+                                : null,
+                          ),
+                        ),
+                        if (message.isDeleted)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              '[Deleted]',
+                              style: TextStyle(
+                                fontSize: 12.sp,
+                                color: theme.messageDeletedText,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              // Attachment with optional caption
+              if (message.attachments != null)
+                ...message.attachments!.map((attachment) {
+                  return Opacity(
+                    opacity: message.isSending
+                        ? 0.6
+                        : (message.isDeleted ? 0.5 : 1.0),
+                    child: message.text != null && message.text!.isNotEmpty
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(8.r),
+                            child: Container(
+                              color: message.isDeleted
+                                  ? theme.messageDeletedBackground
+                                  : (isSelf
+                                        ? theme.messageSentBackground
+                                        : theme.messageReceivedBackground),
+                              child: Column(
+                                crossAxisAlignment: isSelf
+                                    ? CrossAxisAlignment.end
+                                    : CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Attachment widget - full width, no padding
+                                  if (!message.isDeleted)
+                                    buildAttachmentWidget(
+                                      attachment,
+                                      isSelf,
+                                      message,
+                                    )
+                                  else
+                                    Container(
+                                      height: 150,
+                                      color: theme.messageDeletedBackground,
+                                      child: Center(
+                                        child: Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              Icons.image_not_supported,
+                                              color: theme.messageDeletedText,
+                                              size: 40,
+                                            ),
+                                            SizedBox(height: 8),
+                                            Text(
+                                              '[Deleted Attachment]',
+                                              style: TextStyle(
+                                                color: theme.messageDeletedText,
+                                                fontStyle: FontStyle.italic,
+                                                fontSize: 12.sp,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  // Caption text at the bottom with margin
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      8,
+                                      12,
+                                      8,
+                                      8,
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        SelectableText(
+                                          message.text!,
+                                          style: TextStyle(
+                                            fontSize: 14.sp,
+                                            color: message.isDeleted
+                                                ? theme.messageDeletedText
+                                                : (isSelf
+                                                      ? theme.messageSentText
+                                                      : theme
+                                                            .messageReceivedText),
+                                            decoration: message.isDeleted
+                                                ? TextDecoration.lineThrough
+                                                : null,
+                                            decorationColor: message.isDeleted
+                                                ? theme.messageDeletedText
+                                                : null,
+                                            fontStyle: message.isDeleted
+                                                ? FontStyle.italic
+                                                : null,
+                                          ),
+                                        ),
+                                        if (message.isDeleted)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              top: 4,
+                                            ),
+                                            child: Text(
+                                              '[Deleted]',
+                                              style: TextStyle(
+                                                fontSize: 12.sp,
+                                                color: theme.messageDeletedText,
+                                                fontStyle: FontStyle.italic,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : !message.isDeleted
+                        ? buildAttachmentWidget(
+                            attachment,
+                            isSelf,
+                            message,
+                          )
+                        : Container(
+                            height: 150,
+                            decoration: BoxDecoration(
+                              color: theme.messageDeletedBackground,
+                              borderRadius: BorderRadius.circular(8.r),
+                              border: Border.all(
+                                color: theme.borderColor,
+                                width: 1,
+                              ),
+                            ),
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.image_not_supported,
+                                    color: theme.messageDeletedText,
+                                    size: 40,
+                                  ),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    '[Deleted Attachment]',
+                                    style: TextStyle(
+                                      color: theme.messageDeletedText,
+                                      fontStyle: FontStyle.italic,
+                                      fontSize: 12.sp,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                  );
+                }),
+              if (!isSelf && isLastFromSender)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 0,
+                  ),
+                  child: Text(
+                    message.sender,
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: theme.messageSenderName,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
