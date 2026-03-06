@@ -173,40 +173,44 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
-        child: StreamBuilder<ChatTheme>(
-          stream: _rxdartAdapter.themeStream,
-          initialData: _rxdartAdapter.currentTheme,
-          builder: (context, snapshot) => AppBar(
-            title: Text(
-              _channelName,
-              style: const TextStyle(color: Colors.white),
-            ),
-            backgroundColor: snapshot.data?.primaryColor ?? Colors.blue,
-            elevation: 0,
-            iconTheme: const IconThemeData(color: Colors.white),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.info_outlined),
-                onPressed: _openChannelInfoPage,
+    return StreamBuilder<ChatTheme>(
+      stream: _rxdartAdapter.themeStream,
+      initialData: _rxdartAdapter.currentTheme,
+      builder: (context, themeSnapshot) {
+        final primaryColor = themeSnapshot.data?.primaryColor ?? Colors.blue;
+        // Create a light tint of the primary color by blending with white
+        final backgroundColor =
+            Color.lerp(Colors.white, primaryColor, 0.08) ?? Colors.white;
+
+        return Scaffold(
+          backgroundColor: backgroundColor,
+          appBar: PreferredSize(
+            preferredSize: const Size.fromHeight(60),
+            child: AppBar(
+              title: Text(
+                _channelName,
+                style: const TextStyle(color: Colors.white),
               ),
-            ],
+              backgroundColor: themeSnapshot.data?.primaryColor ?? Colors.blue,
+              elevation: 0,
+              iconTheme: const IconThemeData(color: Colors.white),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.info_outlined),
+                  onPressed: _openChannelInfoPage,
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
-      body: StreamBuilder<ChatTheme>(
-        stream: _rxdartAdapter.themeStream,
-        initialData: _rxdartAdapter.currentTheme,
-        builder: (context, snapshot) => ChatThemeProvider(
-          theme: snapshot.data ?? _chatService.getSelectedTheme(),
-          child: ChatView(
-            channelId: widget.channelId,
-            rxdartAdapter: _rxdartAdapter,
+          body: ChatThemeProvider(
+            theme: themeSnapshot.data ?? _chatService.getSelectedTheme(),
+            child: ChatView(
+              channelId: widget.channelId,
+              rxdartAdapter: _rxdartAdapter,
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -612,6 +616,7 @@ class _ChatViewState extends State<ChatView> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = ChatThemeProvider.of(context);
     return SafeArea(
       minimum: const EdgeInsets.all(0),
       child: Stack(
@@ -619,7 +624,7 @@ class _ChatViewState extends State<ChatView> {
           Column(
             children: [
               Expanded(child: _buildMessagesList()),
-              _buildInputDivider(),
+              _buildInputDivider(theme),
               _buildInputArea(),
             ],
           ),
@@ -727,29 +732,36 @@ class _ChatViewState extends State<ChatView> {
                         final isSelf =
                             message.sender == _currentUserOfficialCode;
 
-                        // Check if this is the last message from this sender in the chain
-                        // In reverse display, last from sender means next message (higher visual index) is from different sender
-                        final nextIndex = index + 1;
-                        final isLastFromSender =
-                            nextIndex >= messages.length ||
-                            messages[messages.length - 1 - nextIndex].sender !=
-                                message.sender;
+                        // Show sender name if current sender is different from the NEXT message (newer, below in reverse display)
+                        final nextMessage = index > 0
+                            ? messages[messages.length - index]
+                            : null;
+                        final showSenderName =
+                            nextMessage == null ||
+                            nextMessage.sender != message.sender;
 
-                        return RepaintBoundary(
-                          key: ValueKey(message.id),
-                          child: MessageBubble(
-                            message: message,
-                            isSelf: isSelf,
-                            isLastFromSender: isLastFromSender,
-                            onAttachmentTap: (attachment, fileName) =>
-                                _downloadAndOpenFile(
-                                  message,
-                                  attachment,
-                                  fileName,
-                                ),
-                            buildAttachmentWidget: _buildAttachmentWidget,
-                            onAttachmentLongPress: _showAttachmentMenu,
-                          ),
+                        return Column(
+                          key: ValueKey('${message.id}_col'),
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            RepaintBoundary(
+                              key: ValueKey(message.id),
+                              child: MessageBubble(
+                                message: message,
+                                isSelf: isSelf,
+                                showSenderName: showSenderName,
+                                onAttachmentTap: (attachment, fileName) =>
+                                    _downloadAndOpenFile(
+                                      message,
+                                      attachment,
+                                      fileName,
+                                    ),
+                                buildAttachmentWidget: _buildAttachmentWidget,
+                                onAttachmentLongPress: _showAttachmentMenu,
+                              ),
+                            ),
+                          ],
                         );
                       },
                     );
@@ -763,8 +775,12 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
-  Widget _buildInputDivider() {
-    return const Divider(height: 1, thickness: 1, color: Colors.grey);
+  Widget _buildInputDivider(ChatTheme theme) {
+    return Divider(
+      height: 1,
+      thickness: 1,
+      color: theme.getThemeAwareDividerColor(),
+    );
   }
 
   Widget _buildAttachmentWidget(
@@ -889,6 +905,7 @@ class _ChatViewState extends State<ChatView> {
       attachment: attachment,
       isSelf: isSelf,
       message: message,
+      logger: _chatConfig.logger,
       previewBuilder: (att) => ClipRRect(
         borderRadius: BorderRadius.circular(8.r),
         child: _imageResolver.buildSmallPreview(att),
@@ -905,18 +922,54 @@ class _ChatViewState extends State<ChatView> {
     bool isSelf,
     Message message,
   ) {
+    final mimeType =
+        attachment['mime_type'] as String? ?? 'application/octet-stream';
     return FileAttachmentPreview(
       attachment: attachment,
       isSelf: isSelf,
       message: message,
-      previewBuilder: (att) => Icon(
-        Icons.insert_drive_file,
-        size: 20,
-        color: Colors.white,
-      ),
+      logger: _chatConfig.logger,
+      previewBuilder: (att) => _buildFileIcon(mimeType, isForPreview: true),
       onTap: () => _downloadAndOpenFile(message, attachment, fileName),
       onLongPress: () => _showAttachmentMenu(message, attachment, fileName),
     );
+  }
+
+  /// Build icon for file attachments based on MIME type
+  /// Colors are bold/saturated to contrast with pale backgrounds
+  Icon _buildFileIcon(String mimeType, {bool isForPreview = false}) {
+    final lowerType = mimeType.toLowerCase();
+    const size = 20.0;
+
+    if (lowerType.startsWith('image/')) {
+      return Icon(Icons.image, size: size, color: Colors.blue);
+    }
+    if (lowerType.startsWith('audio/')) {
+      return Icon(Icons.audio_file, size: size, color: Colors.orange);
+    }
+    if (lowerType.startsWith('video/')) {
+      return Icon(Icons.video_file, size: size, color: Colors.purple);
+    }
+    if (lowerType.startsWith('application/pdf')) {
+      return Icon(Icons.picture_as_pdf, size: size, color: Colors.red);
+    }
+    if (lowerType.contains('word') || lowerType.contains('document')) {
+      return Icon(Icons.description, size: size, color: Colors.blue);
+    }
+    if (lowerType.contains('sheet') || lowerType.contains('excel')) {
+      return Icon(Icons.table_chart, size: size, color: Colors.green);
+    }
+    if (lowerType.contains('presentation') ||
+        lowerType.contains('powerpoint')) {
+      return Icon(Icons.slideshow, size: size, color: Colors.red);
+    }
+    if (lowerType.contains('zip') ||
+        lowerType.contains('rar') ||
+        lowerType.contains('compress')) {
+      return Icon(Icons.folder_zip, size: size, color: Colors.amber);
+    }
+
+    return Icon(Icons.insert_drive_file, size: size, color: Colors.indigo);
   }
 
   Widget _buildVoiceRecordingWidget(
@@ -1003,7 +1056,7 @@ class _ChatViewState extends State<ChatView> {
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.grey[300],
+            color: _chatConfig.theme.getThemeAwareGrey(300),
             borderRadius: BorderRadius.circular(8.r),
           ),
           child: Text(
@@ -1031,7 +1084,9 @@ class _ChatViewState extends State<ChatView> {
               decoration: BoxDecoration(
                 color: isSelf
                     ? _chatConfig.theme.primaryColor
-                    : (message.isSending ? Colors.grey[300] : Colors.white),
+                    : (message.isSending
+                          ? _chatConfig.theme.getThemeAwareGrey(300)
+                          : _chatConfig.theme.getThemeAwareWhite()),
                 borderRadius: BorderRadius.circular(8.r),
               ),
               padding: const EdgeInsets.all(12),

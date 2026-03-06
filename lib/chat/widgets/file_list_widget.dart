@@ -28,27 +28,37 @@ class FileListWidget extends StatelessWidget {
 
   Icon _getFileIcon(String mimeType) {
     final lowerType = mimeType.toLowerCase();
+    const size = 20.0;
 
-    if (lowerType.startsWith('image/'))
-      return Icon(Icons.image, color: Colors.blue);
-    if (lowerType.startsWith('audio/'))
-      return Icon(Icons.audio_file, color: Colors.orange);
-    if (lowerType.startsWith('video/'))
-      return Icon(Icons.video_file, color: Colors.purple);
-    if (lowerType.startsWith('application/pdf'))
-      return Icon(Icons.picture_as_pdf, color: Colors.red);
-    if (lowerType.contains('word') || lowerType.contains('document'))
-      return Icon(Icons.description, color: Colors.blue);
-    if (lowerType.contains('sheet') || lowerType.contains('excel'))
-      return Icon(Icons.table_chart, color: Colors.green);
-    if (lowerType.contains('presentation') || lowerType.contains('powerpoint'))
-      return Icon(Icons.slideshow, color: Colors.red);
+    if (lowerType.startsWith('image/')) {
+      return Icon(Icons.image, size: size, color: Colors.blue);
+    }
+    if (lowerType.startsWith('audio/')) {
+      return Icon(Icons.audio_file, size: size, color: Colors.orange);
+    }
+    if (lowerType.startsWith('video/')) {
+      return Icon(Icons.video_file, size: size, color: Colors.purple);
+    }
+    if (lowerType.startsWith('application/pdf')) {
+      return Icon(Icons.picture_as_pdf, size: size, color: Colors.red);
+    }
+    if (lowerType.contains('word') || lowerType.contains('document')) {
+      return Icon(Icons.description, size: size, color: Colors.blue);
+    }
+    if (lowerType.contains('sheet') || lowerType.contains('excel')) {
+      return Icon(Icons.table_chart, size: size, color: Colors.green);
+    }
+    if (lowerType.contains('presentation') ||
+        lowerType.contains('powerpoint')) {
+      return Icon(Icons.slideshow, size: size, color: Colors.red);
+    }
     if (lowerType.contains('zip') ||
         lowerType.contains('rar') ||
-        lowerType.contains('compress'))
-      return Icon(Icons.folder_zip, color: Colors.amber);
+        lowerType.contains('compress')) {
+      return Icon(Icons.folder_zip, size: size, color: Colors.amber);
+    }
 
-    return Icon(Icons.insert_drive_file, color: Colors.grey);
+    return Icon(Icons.insert_drive_file, size: size, color: Colors.indigo);
   }
 
   @override
@@ -61,9 +71,7 @@ class FileListWidget extends StatelessWidget {
       child: Container(
         color: message.isDeleted
             ? theme.messageDeletedBackground
-            : (isSelf
-                  ? theme.messageSentBackground
-                  : theme.messageReceivedBackground),
+            : Colors.white,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: isSelf

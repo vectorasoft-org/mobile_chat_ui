@@ -47,11 +47,7 @@ class _MediaGalleryWidgetState extends State<MediaGalleryWidget> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(8.r),
       child: Container(
-        color: widget.message.isDeleted
-            ? theme.messageDeletedBackground
-            : (widget.isSelf
-                  ? theme.messageSentBackground
-                  : theme.messageReceivedBackground),
+        color: Colors.white,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: widget.isSelf

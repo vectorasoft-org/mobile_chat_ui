@@ -354,4 +354,39 @@ class ChatTheme {
       videoSliderColor: videoSliderColor ?? this.videoSliderColor,
     );
   }
+
+  /// Get a theme-aware white color by blending with primary color
+  Color getThemeAwareWhite({double blendStrength = 0.05}) {
+    return Color.lerp(Colors.white, primaryColor, blendStrength) ??
+        Colors.white;
+  }
+
+  /// Get a theme-aware grey color by blending with primary color
+  /// [greyShade] is the base grey (e.g., 200, 300, 600)
+  Color getThemeAwareGrey(int greyShade, {double blendStrength = 0.03}) {
+    final baseGrey = Colors.grey[greyShade] ?? Colors.grey;
+    return Color.lerp(baseGrey, primaryColor, blendStrength) ?? baseGrey;
+  }
+
+  /// Get a theme-aware divider color
+  Color getThemeAwareDividerColor() {
+    return getThemeAwareGrey(300, blendStrength: 0.08);
+  }
+
+  /// Get a theme-aware secondary text color
+  Color getThemeAwareSecondaryText() {
+    return getThemeAwareGrey(600, blendStrength: 0.05);
+  }
+
+  /// Get a theme-aware message background color (for received messages)
+  /// Slightly more tinted than scaffold background
+  Color getThemeAwareMessageBackground() {
+    return Color.lerp(Colors.white, primaryColor, 0.13) ?? Colors.white;
+  }
+
+  /// Get a theme-aware attachment background color (for content inside messages)
+  /// More tinted than message background
+  Color getThemeAwareAttachmentBackground() {
+    return Color.lerp(Colors.white, primaryColor, 0.18) ?? Colors.white;
+  }
 }

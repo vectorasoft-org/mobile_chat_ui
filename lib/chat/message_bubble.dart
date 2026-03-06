@@ -10,7 +10,7 @@ enum _AttachmentCategory { single, multipleMedia, multipleFiles }
 class MessageBubble extends StatelessWidget {
   final Message message;
   final bool isSelf;
-  final bool isLastFromSender;
+  final bool showSenderName;
   final Future<void> Function(Map<String, dynamic>, String) onAttachmentTap;
   final Widget Function(Map<String, dynamic>, bool, Message)
   buildAttachmentWidget;
@@ -21,7 +21,7 @@ class MessageBubble extends StatelessWidget {
     super.key,
     required this.message,
     required this.isSelf,
-    required this.isLastFromSender,
+    required this.showSenderName,
     required this.onAttachmentTap,
     required this.buildAttachmentWidget,
     required this.onAttachmentLongPress,
@@ -62,8 +62,9 @@ class MessageBubble extends StatelessWidget {
                           : (isSelf
                                 ? theme.messageSentBackground
                                 : (message.isSending
-                                      ? theme.messageReceivedBackground
-                                      : theme.messageReceivedBackground)),
+                                      ? theme.getThemeAwareMessageBackground()
+                                      : theme
+                                            .getThemeAwareMessageBackground())),
                       borderRadius: BorderRadius.circular(8.r),
                       border: message.isDeleted
                           ? Border.all(color: theme.borderColor, width: 1)
@@ -151,7 +152,8 @@ class MessageBubble extends StatelessWidget {
                                       ? theme.messageDeletedBackground
                                       : (isSelf
                                             ? theme.messageSentBackground
-                                            : theme.messageReceivedBackground),
+                                            : theme
+                                                  .getThemeAwareMessageBackground()),
                                   child: Column(
                                     crossAxisAlignment: isSelf
                                         ? CrossAxisAlignment.end
@@ -258,7 +260,7 @@ class MessageBubble extends StatelessWidget {
                                 child: Container(
                                   color: isSelf
                                       ? theme.messageSentBackground
-                                      : theme.messageReceivedBackground,
+                                      : theme.getThemeAwareMessageBackground(),
                                   child: buildAttachmentWidget(
                                     attachment,
                                     isSelf,
@@ -301,7 +303,8 @@ class MessageBubble extends StatelessWidget {
                     }
                   }(),
                 ),
-              if (!isSelf && isLastFromSender)
+              // Show sender name independently of attachment type
+              if (showSenderName)
                 Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
