@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'config/chat_theme_provider.dart';
 import 'models.dart';
+import 'widgets/media_gallery_widget.dart';
+import 'widgets/file_list_widget.dart';
+
+enum _AttachmentCategory { single, multipleMedia, multipleFiles }
 
 class MessageBubble extends StatelessWidget {
   final Message message;
@@ -10,6 +14,8 @@ class MessageBubble extends StatelessWidget {
   final Future<void> Function(Map<String, dynamic>, String) onAttachmentTap;
   final Widget Function(Map<String, dynamic>, bool, Message)
   buildAttachmentWidget;
+  final void Function(Message, Map<String, dynamic>, String)
+  onAttachmentLongPress;
 
   const MessageBubble({
     super.key,
@@ -18,6 +24,7 @@ class MessageBubble extends StatelessWidget {
     required this.isLastFromSender,
     required this.onAttachmentTap,
     required this.buildAttachmentWidget,
+    required this.onAttachmentLongPress,
   });
 
   @override
@@ -100,157 +107,200 @@ class MessageBubble extends StatelessWidget {
                     ),
                   ),
                 ),
-              // Attachment with optional caption
-              if (message.attachments != null)
-                ...message.attachments!.map((attachment) {
-                  return Opacity(
-                    opacity: message.isSending
-                        ? 0.6
-                        : (message.isDeleted ? 0.5 : 1.0),
-                    child: message.text != null && message.text!.isNotEmpty
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(8.r),
-                            child: Container(
-                              color: message.isDeleted
-                                  ? theme.messageDeletedBackground
-                                  : (isSelf
-                                        ? theme.messageSentBackground
-                                        : theme.messageReceivedBackground),
-                              child: Column(
-                                crossAxisAlignment: isSelf
-                                    ? CrossAxisAlignment.end
-                                    : CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  // Attachment widget - full width, no padding
-                                  if (!message.isDeleted)
-                                    buildAttachmentWidget(
-                                      attachment,
-                                      isSelf,
-                                      message,
-                                    )
-                                  else
-                                    Container(
-                                      height: 150,
-                                      color: theme.messageDeletedBackground,
-                                      child: Center(
-                                        child: Column(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Icon(
-                                              Icons.image_not_supported,
-                                              color: theme.messageDeletedText,
-                                              size: 40,
+              // Attachments (routing based on category)
+              if (message.attachments != null &&
+                  message.attachments!.isNotEmpty)
+                Opacity(
+                  opacity: message.isSending
+                      ? 0.6
+                      : (message.isDeleted ? 0.5 : 1.0),
+                  child: () {
+                    final category = _getAttachmentCategory(
+                      message.attachments!,
+                    );
+
+                    switch (category) {
+                      case _AttachmentCategory.multipleMedia:
+                        // Multiple images/videos: show gallery grid
+                        return MediaGalleryWidget(
+                          attachments: message.attachments!,
+                          isSelf: isSelf,
+                          message: message,
+                          buildAttachmentWidget: buildAttachmentWidget,
+                          onAttachmentLongPress: onAttachmentLongPress,
+                        );
+                      case _AttachmentCategory.multipleFiles:
+                        // Multiple files: show file list
+                        return FileListWidget(
+                          attachments: message.attachments!,
+                          isSelf: isSelf,
+                          message: message,
+                          onAttachmentTap: (msg, att, fileName) async {
+                            await onAttachmentTap(att, fileName);
+                          },
+                          onAttachmentLongPress: onAttachmentLongPress,
+                        );
+                      case _AttachmentCategory.single:
+                        // Single attachment: use original logic
+                        final attachment = message.attachments!.first;
+                        return message.text != null && message.text!.isNotEmpty
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(8.r),
+                                child: Container(
+                                  color: message.isDeleted
+                                      ? theme.messageDeletedBackground
+                                      : (isSelf
+                                            ? theme.messageSentBackground
+                                            : theme.messageReceivedBackground),
+                                  child: Column(
+                                    crossAxisAlignment: isSelf
+                                        ? CrossAxisAlignment.end
+                                        : CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      // Attachment widget - full width, no padding
+                                      if (!message.isDeleted)
+                                        buildAttachmentWidget(
+                                          attachment,
+                                          isSelf,
+                                          message,
+                                        )
+                                      else
+                                        Container(
+                                          height: 150,
+                                          color: theme.messageDeletedBackground,
+                                          child: Center(
+                                            child: Column(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                Icon(
+                                                  Icons.image_not_supported,
+                                                  color:
+                                                      theme.messageDeletedText,
+                                                  size: 40,
+                                                ),
+                                                SizedBox(height: 8),
+                                                Text(
+                                                  '[Deleted Attachment]',
+                                                  style: TextStyle(
+                                                    color: theme
+                                                        .messageDeletedText,
+                                                    fontStyle: FontStyle.italic,
+                                                    fontSize: 12.sp,
+                                                  ),
+                                                ),
+                                              ],
                                             ),
-                                            SizedBox(height: 8),
-                                            Text(
-                                              '[Deleted Attachment]',
+                                          ),
+                                        ),
+                                      // Caption text at the bottom with margin
+                                      Padding(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          8,
+                                          12,
+                                          8,
+                                          8,
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            SelectableText(
+                                              message.text!,
                                               style: TextStyle(
-                                                color: theme.messageDeletedText,
-                                                fontStyle: FontStyle.italic,
-                                                fontSize: 12.sp,
+                                                fontSize: 16.sp,
+                                                color: message.isDeleted
+                                                    ? theme.messageDeletedText
+                                                    : (isSelf
+                                                          ? theme
+                                                                .messageSentText
+                                                          : theme
+                                                                .messageReceivedText),
+                                                decoration: message.isDeleted
+                                                    ? TextDecoration.lineThrough
+                                                    : null,
+                                                decorationColor:
+                                                    message.isDeleted
+                                                    ? theme.messageDeletedText
+                                                    : null,
+                                                fontStyle: message.isDeleted
+                                                    ? FontStyle.italic
+                                                    : null,
                                               ),
                                             ),
+                                            if (message.isDeleted)
+                                              Padding(
+                                                padding: const EdgeInsets.only(
+                                                  top: 4,
+                                                ),
+                                                child: Text(
+                                                  '[Deleted]',
+                                                  style: TextStyle(
+                                                    fontSize: 12.sp,
+                                                    color: theme
+                                                        .messageDeletedText,
+                                                    fontStyle: FontStyle.italic,
+                                                  ),
+                                                ),
+                                              ),
                                           ],
                                         ),
                                       ),
-                                    ),
-                                  // Caption text at the bottom with margin
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      8,
-                                      12,
-                                      8,
-                                      8,
-                                    ),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        SelectableText(
-                                          message.text!,
-                                          style: TextStyle(
-                                            fontSize: 14.sp,
-                                            color: message.isDeleted
-                                                ? theme.messageDeletedText
-                                                : (isSelf
-                                                      ? theme.messageSentText
-                                                      : theme
-                                                            .messageReceivedText),
-                                            decoration: message.isDeleted
-                                                ? TextDecoration.lineThrough
-                                                : null,
-                                            decorationColor: message.isDeleted
-                                                ? theme.messageDeletedText
-                                                : null,
-                                            fontStyle: message.isDeleted
-                                                ? FontStyle.italic
-                                                : null,
-                                          ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            : !message.isDeleted
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(8.r),
+                                child: Container(
+                                  color: isSelf
+                                      ? theme.messageSentBackground
+                                      : theme.messageReceivedBackground,
+                                  child: buildAttachmentWidget(
+                                    attachment,
+                                    isSelf,
+                                    message,
+                                  ),
+                                ),
+                              )
+                            : Container(
+                                height: 150,
+                                decoration: BoxDecoration(
+                                  color: theme.messageDeletedBackground,
+                                  borderRadius: BorderRadius.circular(8.r),
+                                  border: Border.all(
+                                    color: theme.borderColor,
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.image_not_supported,
+                                        color: theme.messageDeletedText,
+                                        size: 40,
+                                      ),
+                                      SizedBox(height: 8),
+                                      Text(
+                                        '[Deleted Attachment]',
+                                        style: TextStyle(
+                                          color: theme.messageDeletedText,
+                                          fontStyle: FontStyle.italic,
+                                          fontSize: 12.sp,
                                         ),
-                                        if (message.isDeleted)
-                                          Padding(
-                                            padding: const EdgeInsets.only(
-                                              top: 4,
-                                            ),
-                                            child: Text(
-                                              '[Deleted]',
-                                              style: TextStyle(
-                                                fontSize: 12.sp,
-                                                color: theme.messageDeletedText,
-                                                fontStyle: FontStyle.italic,
-                                              ),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
+                                      ),
+                                    ],
                                   ),
-                                ],
-                              ),
-                            ),
-                          )
-                        : !message.isDeleted
-                        ? buildAttachmentWidget(
-                            attachment,
-                            isSelf,
-                            message,
-                          )
-                        : Container(
-                            height: 150,
-                            decoration: BoxDecoration(
-                              color: theme.messageDeletedBackground,
-                              borderRadius: BorderRadius.circular(8.r),
-                              border: Border.all(
-                                color: theme.borderColor,
-                                width: 1,
-                              ),
-                            ),
-                            child: Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.image_not_supported,
-                                    color: theme.messageDeletedText,
-                                    size: 40,
-                                  ),
-                                  SizedBox(height: 8),
-                                  Text(
-                                    '[Deleted Attachment]',
-                                    style: TextStyle(
-                                      color: theme.messageDeletedText,
-                                      fontStyle: FontStyle.italic,
-                                      fontSize: 12.sp,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                  );
-                }),
+                                ),
+                              );
+                    }
+                  }(),
+                ),
               if (!isSelf && isLastFromSender)
                 Padding(
                   padding: const EdgeInsets.symmetric(
@@ -271,5 +321,27 @@ class MessageBubble extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  _AttachmentCategory _getAttachmentCategory(
+    List<Map<String, dynamic>> attachments,
+  ) {
+    if (attachments.isEmpty) return _AttachmentCategory.single;
+    if (attachments.length == 1) return _AttachmentCategory.single;
+
+    final types = attachments.map((a) => a['type'] as String? ?? '').toSet();
+
+    // If all are media types (image or video)
+    if (types.every((t) => t == 'image' || t == 'video')) {
+      return _AttachmentCategory.multipleMedia;
+    }
+
+    // If all are files
+    if (types.every((t) => t == 'file')) {
+      return _AttachmentCategory.multipleFiles;
+    }
+
+    // Mixed types or other cases: default to media
+    return _AttachmentCategory.multipleMedia;
   }
 }

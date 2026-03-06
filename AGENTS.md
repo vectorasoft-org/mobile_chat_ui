@@ -1,0 +1,3 @@
+- Don't commit to git, I will commit it myself.
+- Use proper tools, don't try to edit sensitive files (package.json, pubspec.yaml, etc) directly.
+- Always do analysis using proper tools like `flutter analyze` after fixes.

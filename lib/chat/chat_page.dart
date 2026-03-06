@@ -31,6 +31,7 @@ import 'handlers/attachment_menu_handler.dart';
 import 'handlers/file_download_handler.dart';
 import 'resolvers/image_resolver.dart';
 import 'services/chat_localizations.dart';
+import 'widgets/file_attachment_preview.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({
@@ -747,6 +748,7 @@ class _ChatViewState extends State<ChatView> {
                                   fileName,
                                 ),
                             buildAttachmentWidget: _buildAttachmentWidget,
+                            onAttachmentLongPress: _showAttachmentMenu,
                           ),
                         );
                       },
@@ -883,75 +885,16 @@ class _ChatViewState extends State<ChatView> {
     bool isSelf,
     Message message,
   ) {
-    final fileSizeStr = _formatFileSize(fileSize);
-    // _chatConfig.logger.d('Building image file preview - $fileName ($fileSizeStr)');
-
-    return RepaintBoundary(
-      child: AnimatedOpacity(
-        opacity: message.isSending ? 0.5 : 1.0,
-        duration: const Duration(milliseconds: 200),
-        child: Padding(
-          padding: const EdgeInsets.all(4),
-          child: GestureDetector(
-            onTap: () => _downloadAndOpenFile(message, attachment, fileName),
-            onLongPress: () =>
-                _showAttachmentMenu(message, attachment, fileName),
-            child: Container(
-              decoration: BoxDecoration(
-                color: isSelf
-                    ? _chatConfig.theme.primaryColor
-                    : (message.isSending ? Colors.grey[300] : Colors.white),
-                borderRadius: BorderRadius.circular(8.r),
-              ),
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 40.w,
-                    height: 40.w,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(8.r),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8.r),
-                      child: _imageResolver.buildSmallPreview(attachment),
-                    ),
-                  ),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          fileName,
-                          style: TextStyle(
-                            fontSize: 12.sp,
-                            fontWeight: FontWeight.w500,
-                            overflow: TextOverflow.ellipsis,
-                            color: isSelf ? Colors.white : Colors.black,
-                          ),
-                          maxLines: 1,
-                        ),
-                        SizedBox(height: 4.h),
-                        Text(
-                          fileSizeStr,
-                          style: TextStyle(
-                            fontSize: 10.sp,
-                            color: isSelf ? Colors.white70 : Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+    return FileAttachmentPreview(
+      attachment: attachment,
+      isSelf: isSelf,
+      message: message,
+      previewBuilder: (att) => ClipRRect(
+        borderRadius: BorderRadius.circular(8.r),
+        child: _imageResolver.buildSmallPreview(att),
       ),
+      onTap: () => _downloadAndOpenFile(message, attachment, fileName),
+      onLongPress: () => _showAttachmentMenu(message, attachment, fileName),
     );
   }
 
@@ -962,80 +905,17 @@ class _ChatViewState extends State<ChatView> {
     bool isSelf,
     Message message,
   ) {
-    final fileSizeStr = _formatFileSize(fileSize);
-    _chatConfig.logger.d(
-      'Building generic file preview - $fileName ($fileSizeStr)',
-    );
-
-    return RepaintBoundary(
-      child: AnimatedOpacity(
-        opacity: message.isSending ? 0.5 : 1.0,
-        duration: const Duration(milliseconds: 200),
-        child: Padding(
-          padding: const EdgeInsets.all(4),
-          child: GestureDetector(
-            onTap: () => _downloadAndOpenFile(message, attachment, fileName),
-            onLongPress: () =>
-                _showAttachmentMenu(message, attachment, fileName),
-            child: Container(
-              decoration: BoxDecoration(
-                color: isSelf
-                    ? _chatConfig.theme.primaryColor
-                    : (message.isSending ? Colors.grey[300] : Colors.white),
-                borderRadius: BorderRadius.circular(8.r),
-              ),
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 40.w,
-                    height: 40.w,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(8.r),
-                    ),
-                    child: Center(
-                      child: Icon(
-                        Icons.insert_drive_file,
-                        size: 20,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          fileName,
-                          style: TextStyle(
-                            fontSize: 12.sp,
-                            fontWeight: FontWeight.w500,
-                            overflow: TextOverflow.ellipsis,
-                            color: isSelf ? Colors.white : Colors.black,
-                          ),
-                          maxLines: 1,
-                        ),
-                        SizedBox(height: 4.h),
-                        Text(
-                          fileSizeStr,
-                          style: TextStyle(
-                            fontSize: 10.sp,
-                            color: isSelf ? Colors.white70 : Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+    return FileAttachmentPreview(
+      attachment: attachment,
+      isSelf: isSelf,
+      message: message,
+      previewBuilder: (att) => Icon(
+        Icons.insert_drive_file,
+        size: 20,
+        color: Colors.white,
       ),
+      onTap: () => _downloadAndOpenFile(message, attachment, fileName),
+      onLongPress: () => _showAttachmentMenu(message, attachment, fileName),
     );
   }
 
