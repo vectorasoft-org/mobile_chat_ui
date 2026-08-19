@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models.dart';
 import '../config/chat_theme.dart';
@@ -9,8 +11,21 @@ enum GetMessageOpt {
   lte,
 }
 
+@immutable
+class MessageFilter {
+  final String refMessageOpt;
+  final String refMessageId;
+
+  const MessageFilter({
+    required this.refMessageOpt,
+    required this.refMessageId,
+  });
+}
+
 abstract class ChatService {
   dynamic get client;
+
+  FutureOr<void> initialize();
 
   /// Register a listener to receive state change notifications
   void addListener(ChatServiceListener listener);

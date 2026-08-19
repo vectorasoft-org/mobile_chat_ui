@@ -303,4 +303,47 @@ class StreamChatHttpClient {
       rethrow;
     }
   }
+
+  Future<Map<String, dynamic>> getSignedJwtToken({
+    required String userId,
+  }) async {
+    try {
+      config.logger.i('HTTP POST /chat/token for user: $userId');
+
+      final body = {
+        'user_id': userId,
+      };
+
+      config.logger.d('Request body: $body');
+
+      final response = await _dio.post(
+        '/chat/token',
+        data: body,
+        options: Options(
+          headers: {
+            // 'x-api-key': config.apiKey,
+            'Accept': 'application/json',
+          },
+        ),
+      );
+
+      config.logger.i('HTTP response status: ${response.statusCode}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final jsonData = response.data is String
+            ? jsonDecode(response.data)
+            : response.data;
+
+        config.logger.d('Message sent successfully');
+        return jsonData as Map<String, dynamic>;
+      } else {
+        throw Exception(
+          'Failed to send message: ${response.statusCode} ${response.statusMessage}',
+        );
+      }
+    } catch (e) {
+      config.logger.e('Error sending message', error: e);
+      rethrow;
+    }
+  }
 }

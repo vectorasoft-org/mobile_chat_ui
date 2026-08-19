@@ -83,6 +83,7 @@ class _ChatPageState extends State<ChatPage> {
 
     // Load user info once into the service
     _loadAndCacheUserInfo();
+    _chatService.initialize();
   }
 
   void _loadSavedTheme() {
@@ -617,50 +618,48 @@ class _ChatViewState extends State<ChatView> {
   @override
   Widget build(BuildContext context) {
     final theme = ChatThemeProvider.of(context);
-    return SafeArea(
-      minimum: const EdgeInsets.all(0),
-      child: Stack(
-        children: [
-          Column(
-            children: [
-              Expanded(child: _buildMessagesList()),
-              _buildInputDivider(theme),
-              _buildInputArea(),
-            ],
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _isAtBottomNotifier,
-            builder: (context, isAtBottom, child) {
-              return ValueListenableBuilder<double>(
-                valueListenable: _inputAreaHeightNotifier,
-                builder: (context, inputHeight, _) {
-                  return Positioned(
-                    right: 16,
-                    bottom: inputHeight + 16,
-                    child: AnimatedOpacity(
-                      opacity: isAtBottom ? 0 : 1,
+    return Stack(
+      children: [
+        Column(
+          children: [
+            Expanded(child: _buildMessagesList()),
+            _buildInputDivider(theme),
+            _buildInputArea(),
+            _buildMinPadding(theme),
+          ],
+        ),
+        ValueListenableBuilder<bool>(
+          valueListenable: _isAtBottomNotifier,
+          builder: (context, isAtBottom, child) {
+            return ValueListenableBuilder<double>(
+              valueListenable: _inputAreaHeightNotifier,
+              builder: (context, inputHeight, _) {
+                return Positioned(
+                  right: 16,
+                  bottom: inputHeight + 16,
+                  child: AnimatedOpacity(
+                    opacity: isAtBottom ? 0 : 1,
+                    duration: const Duration(milliseconds: 300),
+                    child: AnimatedSlide(
+                      offset: isAtBottom ? const Offset(0, 2) : Offset.zero,
                       duration: const Duration(milliseconds: 300),
-                      child: AnimatedSlide(
-                        offset: isAtBottom ? const Offset(0, 2) : Offset.zero,
-                        duration: const Duration(milliseconds: 300),
-                        child: FloatingActionButton(
-                          mini: true,
-                          backgroundColor: _chatConfig.theme.primaryColor,
-                          onPressed: _scrollToBottom,
-                          child: const Icon(
-                            Icons.arrow_downward,
-                            color: Colors.white,
-                          ),
+                      child: FloatingActionButton(
+                        mini: true,
+                        backgroundColor: _chatConfig.theme.primaryColor,
+                        onPressed: _scrollToBottom,
+                        child: const Icon(
+                          Icons.arrow_downward,
+                          color: Colors.white,
                         ),
                       ),
                     ),
-                  );
-                },
-              );
-            },
-          ),
-        ],
-      ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ],
     );
   }
 
@@ -1752,6 +1751,15 @@ class _ChatViewState extends State<ChatView> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildMinPadding(ChatTheme theme) {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    return Container(
+      height: bottomPadding,
+      // color should be the same color as the input bar
+      color: Colors.grey[50],
     );
   }
 }

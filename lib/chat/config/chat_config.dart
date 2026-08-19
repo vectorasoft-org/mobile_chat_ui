@@ -10,6 +10,8 @@ class ChatConfig {
   final String baseUrl;
   final String apiKey;
 
+  final String socketBaseUrl;
+
   /// Theme Configuration
   final ChatTheme theme;
 
@@ -48,6 +50,7 @@ class ChatConfig {
   const ChatConfig({
     required this.baseUrl,
     required this.apiKey,
+    required this.socketBaseUrl,
     required this.theme,
     required this.logger,
     required this.storage,
@@ -72,6 +75,7 @@ class ChatConfig {
   ChatConfig copyWith({
     String? baseUrl,
     String? apiKey,
+    String? socketBaseUrl,
     ChatTheme? theme,
     ChatLogger? logger,
     ChatStorageAdapter? storage,
@@ -83,6 +87,7 @@ class ChatConfig {
     return ChatConfig(
       baseUrl: baseUrl ?? this.baseUrl,
       apiKey: apiKey ?? this.apiKey,
+      socketBaseUrl: socketBaseUrl ?? this.socketBaseUrl,
       theme: theme ?? this.theme,
       logger: logger ?? this.logger,
       storage: storage ?? this.storage,

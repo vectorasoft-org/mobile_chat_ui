@@ -20,6 +20,9 @@ class MockChatService implements ChatService {
   @override
   dynamic get client => null;
 
+  @override
+  Future<void> initialize() async {}
+
   void _notifyMessages() {
     final snapshot = List<Message>.from(_messages);
     for (final listener in _listeners) {

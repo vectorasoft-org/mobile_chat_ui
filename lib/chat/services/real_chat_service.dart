@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:vs_chat_flutter/chat/services/socket_io_client.dart';
 import '../config/chat_config.dart';
 import '../config/chat_theme.dart';
 import '../config/chat_service_listener.dart';
@@ -14,11 +15,13 @@ import 'http_client.dart';
 class RealChatService implements ChatService {
   final ChatConfig config;
   late final StreamChatHttpClient _httpClient;
+  late final StreamChatSocketIoClient _socketClient;
 
   // Core state - plain Dart types
   final List<Message> _messagesCache = [];
   late ChatTheme _selectedTheme;
   late String _channelName;
+  String? _channelId;
   late String _userName;
   late String _userCode;
   late String? _userAvatarUrl;
@@ -28,6 +31,7 @@ class RealChatService implements ChatService {
 
   RealChatService({required this.config}) {
     _httpClient = StreamChatHttpClient(config: config);
+    _socketClient = StreamChatSocketIoClient(config: config);
     _selectedTheme = ChatTheme.houExpress();
     _channelName = 'Channel';
     _userName = 'Unknown';
@@ -38,6 +42,19 @@ class RealChatService implements ChatService {
 
   @override
   dynamic get client => _httpClient;
+
+  @override
+  Future<void> initialize() async {
+    final response = await _httpClient.getSignedJwtToken(userId: _userCode);
+    final token = response['data']!;
+    await _socketClient.initialize(
+      token: token,
+    );
+  }
+
+  Future<void> joinChannel(String channelId) async {
+    await _socketClient.joinChannel(channelId);
+  }
 
   @override
   void addListener(ChatServiceListener listener) {
@@ -155,30 +172,32 @@ class RealChatService implements ChatService {
         'Calling HTTP client with refMessageId: $refMessageId, op: $op',
       );
 
+      final filter = (op == null || refMessageId == null)
+          ? null
+          : MessageFilter(refMessageId: refMessageId, refMessageOpt: op);
+
       // Fetch from API
-      final response = await _httpClient.getMessages(
-        channelId: channelId,
+      final response = await _socketClient.getMessages(
+        // channelId: channelId,
         limit: limit,
-        refMessageId: refMessageId,
-        op: op,
+        filter: filter,
+        // refMessageId: refMessageId,
+        // op: op,
       );
 
-      config.logger.d('HTTP response received: ${response.keys.toList()}');
+      // config.logger.d('HTTP response received: ${response.keys.toList()}');
 
       // Parse response
-      final messagesData = response['data']?['messages'] as List?;
-      if (messagesData == null) {
-        config.logger.w('No messages data in response');
-        return [];
-      }
-
+      // final messagesData = response['data']?['messages'] as List?;
+      final messagesData = response;
       config.logger.i('Found ${messagesData.length} messages in API response');
 
       // Convert to Message objects
-      final newMessages = (messagesData)
-          .map((msgJson) => Message.fromStreamChatJson(msgJson))
-          .toList()
-          .cast<Message>();
+      final newMessages = messagesData;
+      // final newMessages = (messagesData)
+      //     .map((msgJson) => Message.fromStreamChatJson(msgJson))
+      //     .toList()
+      //     .cast<Message>();
 
       config.logger.i(
         'Converted ${newMessages.length} messages to Message objects',
@@ -275,8 +294,8 @@ class RealChatService implements ChatService {
       _notifyMessagesChanged();
 
       // Start HTTP request in background without awaiting
-      _httpClient
-          .sendMessage(channelId: channelId, userId: userId, text: messageText)
+      _socketClient
+          .sendMessage(text: messageText)
           .then((response) {
             // Extract message ID and timestamp from API response
             config.logger.d('Full HTTP response: $response');
@@ -419,9 +438,7 @@ class RealChatService implements ChatService {
             placeholderAttachment['image_url'] = imageUrl;
 
             // Send message with attachment
-            return _httpClient.sendMessage(
-              channelId: channelId,
-              userId: userId,
+            return _socketClient.sendMessage(
               text: messageText,
               attachments: [placeholderAttachment],
             );
@@ -570,9 +587,7 @@ class RealChatService implements ChatService {
             }
 
             // Send message with attachment
-            return _httpClient.sendMessage(
-              channelId: channelId,
-              userId: userId,
+            return _socketClient.sendMessage(
               text: messageText,
               attachments: [placeholderAttachment],
             );
@@ -718,9 +733,7 @@ class RealChatService implements ChatService {
             placeholderAttachment['asset_url'] = fileUrl;
 
             // Send message with voice recording attachment
-            return _httpClient.sendMessage(
-              channelId: channelId,
-              userId: userId,
+            return _socketClient.sendMessage(
               text: null,
               attachments: [placeholderAttachment],
             );
