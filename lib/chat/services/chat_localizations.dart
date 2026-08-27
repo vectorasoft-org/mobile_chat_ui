@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:vs_chat_flutter/chat/services/default_chat_localization_provider.dart';
 
 import 'localization_provider.dart';
 
@@ -14,7 +15,7 @@ import 'localization_provider.dart';
 ///   String title = ChatLocalizations.chatThemeDialogTitle(context);
 ///   String message = ChatLocalizations.clearCacheDialogContent(context);
 class ChatLocalizations {
-  static ChatLocalizationProvider? _provider;
+  static ChatLocalizationProvider _provider = DefaultChatLocalizationProvider();
 
   /// Initialize the localization provider.
   static void setProvider(ChatLocalizationProvider provider) {
@@ -22,12 +23,7 @@ class ChatLocalizations {
   }
 
   static ChatLocalizationProvider get _getProvider {
-    if (_provider == null) {
-      throw StateError(
-        'ChatLocalizations provider not set. Call ChatLocalizations.setProvider() first.',
-      );
-    }
-    return _provider!;
+    return _provider;
   }
 
   static String _getString(String key, BuildContext context) =>
@@ -144,4 +140,11 @@ class ChatLocalizations {
 
   static String actionsTitle(BuildContext context) =>
       _getString('actionsTitle', context);
+
+  // Message Actions
+  static String deleteMessage(BuildContext context) =>
+      _getString('deleteMessage', context);
+
+  static String deleteMessageError(BuildContext context) =>
+      _getString('deleteMessageError', context);
 }

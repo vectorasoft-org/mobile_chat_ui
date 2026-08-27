@@ -7,7 +7,7 @@ import '../config/chat_theme.dart';
 import '../models.dart';
 import 'chat_service.dart';
 
-class MockChatService implements ChatService {
+class MockChatService extends ChatService {
   final List<ChatServiceListener> _listeners = [];
   final List<Message> _messages = [];
 
@@ -19,9 +19,6 @@ class MockChatService implements ChatService {
 
   @override
   dynamic get client => null;
-
-  @override
-  Future<void> initialize() async {}
 
   void _notifyMessages() {
     final snapshot = List<Message>.from(_messages);
@@ -195,6 +192,15 @@ class MockChatService implements ChatService {
         'duration': durationMilliseconds ~/ 1000,
       },
     );
+  }
+
+  @override
+  Future<void> deleteMessage({
+    required String channelId,
+    required String messageId,
+  }) async {
+    _messages.removeWhere((m) => m.id == messageId);
+    _notifyMessages();
   }
 
   @override

@@ -26,6 +26,7 @@ class Message {
     // Try multiple fields for user ID: official_code, user_id, then user.id
     final userId =
         json['official_code'] as String? ??
+        json['author_id'] as String? ??
         json['user_id'] as String? ??
         json['user']?['id'] as String? ??
         'unknown';
@@ -40,7 +41,7 @@ class Message {
     }
 
     return Message(
-      id: json['id'] ?? '',
+      id: json['id'] ?? json['message_id'] ?? '',
       sender: userId,
       text: messageText.isEmpty ? null : messageText,
       attachments: attachments,

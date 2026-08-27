@@ -1,13 +1,21 @@
 import 'package:vs_chat_flutter/chat/config/chat_config.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:vs_chat_flutter/chat/models.dart';
+import 'package:vs_chat_flutter/chat/services/chat_reactive_adapter.dart';
 import 'package:vs_chat_flutter/chat/services/chat_service.dart';
 
 class StreamChatSocketIoClient {
   final ChatConfig config;
   IO.Socket? _socket;
 
-  StreamChatSocketIoClient({required this.config});
+  void Function(Message)? onNewMessage;
+  void Function(List<String>)? onDeletedMessages;
+
+  StreamChatSocketIoClient({
+    required this.config,
+    this.onNewMessage,
+    this.onDeletedMessages,
+  });
 
   Future<void> initialize({
     required String token,
@@ -31,7 +39,23 @@ class StreamChatSocketIoClient {
       "StreamChatSocketIoClient initialized with socketBaseUrl: ${config.socketBaseUrl}",
     );
 
+    _socket!.on('new-message', _handleNewMessage);
+    _socket!.on('deleted-message', _handleDeletedMessages);
+
     _socket!.connect();
+  }
+
+  void dispose() {
+    _socket?.dispose();
+  }
+
+  void _handleNewMessage(dynamic ackRes) {
+    final newMessage = Message.fromStreamChatJson(ackRes);
+    onNewMessage?.call(newMessage);
+  }
+
+  void _handleDeletedMessages(dynamic ackRes) {
+    onDeletedMessages?.call(ackRes['message_ids'] ?? []);
   }
 
   Future<void> joinChannel(String channelId) async {
@@ -66,10 +90,10 @@ class StreamChatSocketIoClient {
     });
     if (data['status_code'] != 200) {
       throw Exception(
-        'Failed to fetch messages: ${data['status_code']} ${data['message']}',
+        'Failed to fetch messages: ${data['status_code']} ${data['message']} ${data['data']}',
       );
     } else {
-      final messagesJson = data['data']! as List<Map<String, dynamic>>;
+      final messagesJson = data['data']! as List<dynamic>;
       final messages = messagesJson
           .map((js) => Message.fromStreamChatJson(js))
           .toList();
@@ -95,6 +119,38 @@ class StreamChatSocketIoClient {
     if (data['status_code'] != 201) {
       throw Exception(
         'Failed to send message: ${data['status_code']} ${data['message']}',
+      );
+    } else {
+      return data;
+    }
+  }
+
+  Future<Map<String, dynamic>> getChannelDetails() async {
+    if (_socket == null) {
+      throw Exception("socketClient is not initialized");
+    }
+    final data = await _socket!.emitWithAckAsync("channel-details", null);
+    if (data['status_code'] != 200) {
+      throw Exception(
+        'Failed to get channel details: $data ${data['status_code']} ${data['message']}',
+      );
+    } else {
+      return data;
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteMessages({
+    required List<String> messageIds,
+  }) async {
+    if (_socket == null) {
+      throw Exception("socketClient is not initialized");
+    }
+    final data = await _socket!.emitWithAckAsync("delete-messages", [
+      messageIds,
+    ]);
+    if (data['status_code'] != 200) {
+      throw Exception(
+        "Failed to delete messages: ${data['status_code']} ${data['message']}",
       );
     } else {
       return data;

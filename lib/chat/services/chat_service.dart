@@ -25,7 +25,8 @@ class MessageFilter {
 abstract class ChatService {
   dynamic get client;
 
-  FutureOr<void> initialize();
+  FutureOr<void> initialize() {}
+  FutureOr<void> dispose() {}
 
   /// Register a listener to receive state change notifications
   void addListener(ChatServiceListener listener);
@@ -101,6 +102,11 @@ abstract class ChatService {
     required String channelId,
     required String filePath,
     required int durationMilliseconds,
+  });
+
+  Future<void> deleteMessage({
+    required String channelId,
+    required String messageId,
   });
 
   Future<String?> downloadFile({

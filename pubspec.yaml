@@ -1,6 +1,6 @@
 name: vs_chat_flutter
 description: "A new Flutter package project."
-version: 0.2.0
+version: 0.3.0
 homepage:
 publish_to: none
 
@@ -26,6 +26,8 @@ dependencies:
   record: ^6.2.0
   video_player: ^2.11.0
   socket_io_client: ^3.1.6
+  loading_overlay: ^0.5.0
+  rust: ^3.1.0
 
 dev_dependencies:
   flutter_test:

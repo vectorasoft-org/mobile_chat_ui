@@ -4,6 +4,7 @@ import 'dart:math';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:loading_overlay/loading_overlay.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -54,6 +55,8 @@ class _ChatPageState extends State<ChatPage> {
   late String _channelName;
   late ChatTheme _currentTheme;
 
+  bool initializing = true;
+
   @override
   void initState() {
     super.initState();
@@ -67,23 +70,50 @@ class _ChatPageState extends State<ChatPage> {
       _loadSavedTheme();
     });
 
-    _chatService
-        .getChannelName(channelId: widget.channelId)
-        .then((name) {
-          if (name != null && mounted) {
-            setState(() {
-              _channelName = name;
-              _chatService.setChannelName(name);
-            });
-          }
-        })
-        .catchError((e) {
-          _chatConfig.logger.e('Error fetching channel name', error: e);
-        });
-
     // Load user info once into the service
     _loadAndCacheUserInfo();
-    _chatService.initialize();
+    _chatService
+        .initialize()
+        .then((_) {
+          return _chatService
+              .joinChannel(widget.channelId)
+              .then((_) {
+                _chatConfig.logger.i("Joined channel `${widget.channelId}`");
+                return _chatService
+                    .getChannelName(channelId: widget.channelId)
+                    .then((name) {
+                      if (name != null && mounted) {
+                        setState(() {
+                          _channelName = name;
+                          _chatService.setChannelName(name);
+                        });
+                      }
+                    })
+                    .catchError((e) {
+                      _chatConfig.logger.e(
+                        'Error fetching channel name',
+                        error: e,
+                      );
+                    });
+              })
+              .catchError((e) {
+                _chatConfig.logger.e(
+                  "Error joining channel `${widget.channelId}`",
+                  error: e,
+                );
+              });
+        })
+        .whenComplete(() {
+          setState(() {
+            initializing = false;
+          });
+        });
+  }
+
+  @override
+  void dispose() {
+    _chatService.dispose();
+    super.dispose();
   }
 
   void _loadSavedTheme() {
@@ -203,12 +233,19 @@ class _ChatPageState extends State<ChatPage> {
               ],
             ),
           ),
-          body: ChatThemeProvider(
-            theme: themeSnapshot.data ?? _chatService.getSelectedTheme(),
-            child: ChatView(
-              channelId: widget.channelId,
-              rxdartAdapter: _rxdartAdapter,
-            ),
+          body: Builder(
+            builder: (context) {
+              if (initializing) {
+                return Center(child: const CircularProgressIndicator());
+              }
+              return ChatThemeProvider(
+                theme: themeSnapshot.data ?? _chatService.getSelectedTheme(),
+                child: ChatView(
+                  channelId: widget.channelId,
+                  rxdartAdapter: _rxdartAdapter,
+                ),
+              );
+            },
           ),
         );
       },
@@ -758,6 +795,7 @@ class _ChatViewState extends State<ChatView> {
                                     ),
                                 buildAttachmentWidget: _buildAttachmentWidget,
                                 onAttachmentLongPress: _showAttachmentMenu,
+                                onMessageLongPress: _showMessageActions,
                               ),
                             ),
                           ],
@@ -1600,6 +1638,60 @@ class _ChatViewState extends State<ChatView> {
       attachment,
       attachmentType,
     );
+  }
+
+  /// Show a bottom modal with actions for a message (e.g. delete)
+  void _showMessageActions(Message message) {
+    if (message.isSending) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(16.r),
+        ),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: Text(
+                  ChatLocalizations.deleteMessage(context),
+                  style: TextStyle(fontSize: 16.sp),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _deleteMessage(message);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteMessage(Message message) async {
+    try {
+      _chatConfig.logger.i('Deleting message: ${message.id}');
+      await _chatService.deleteMessage(
+        channelId: widget.channelId,
+        messageId: message.id,
+      );
+      _chatConfig.logger.i('Message deleted: ${message.id}');
+    } catch (e) {
+      _chatConfig.logger.e('Error deleting message', error: e);
+      if (mounted) {
+        _showSnackbar(
+          ChatLocalizations.deleteMessageError(context),
+          e.toString(),
+        );
+      }
+    }
   }
 
   void _showAttachmentMenu(

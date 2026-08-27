@@ -4,7 +4,10 @@ import 'dart:convert';
 import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:rust/rust.dart';
+// import 'package:rust/rust.dart';
 import 'package:vs_chat_flutter/chat/services/socket_io_client.dart';
+import 'package:vs_chat_flutter/core/ext/iterable.dart';
 import '../config/chat_config.dart';
 import '../config/chat_theme.dart';
 import '../config/chat_service_listener.dart';
@@ -12,7 +15,7 @@ import '../models.dart';
 import 'chat_service.dart';
 import 'http_client.dart';
 
-class RealChatService implements ChatService {
+class RealChatService extends ChatService {
   final ChatConfig config;
   late final StreamChatHttpClient _httpClient;
   late final StreamChatSocketIoClient _socketClient;
@@ -31,7 +34,11 @@ class RealChatService implements ChatService {
 
   RealChatService({required this.config}) {
     _httpClient = StreamChatHttpClient(config: config);
-    _socketClient = StreamChatSocketIoClient(config: config);
+    _socketClient = StreamChatSocketIoClient(
+      config: config,
+      onNewMessage: _handleNewMessage,
+      onDeletedMessages: _handleDeletedMessages,
+    );
     _selectedTheme = ChatTheme.houExpress();
     _channelName = 'Channel';
     _userName = 'Unknown';
@@ -50,6 +57,11 @@ class RealChatService implements ChatService {
     await _socketClient.initialize(
       token: token,
     );
+  }
+
+  @override
+  void dispose() {
+    _socketClient.dispose();
   }
 
   Future<void> joinChannel(String channelId) async {
@@ -144,6 +156,35 @@ class RealChatService implements ChatService {
     _notifyUserDataChanged();
   }
 
+  void _handleNewMessage(Message message) {
+    if (message.sender != _userCode) {
+      _messagesCache.add(message);
+      _notifyMessagesChanged();
+      config.logger.d("New message arrived: ${message.id}");
+    }
+  }
+
+  void _handleDeletedMessages(List<String> messageIds) {
+    bool didChange = false;
+    for (final id in messageIds) {
+      final target = _messagesCache.firstWhereOrNull((m) => m.id == id);
+      if (target == null) {
+        // not found
+        continue;
+      }
+      if (target.sender == _userCode) {
+        // we'll handle it by ack
+        continue;
+      } else {
+        didChange = true;
+        _messagesCache.remove(target);
+      }
+    }
+    if (didChange) {
+      _notifyMessagesChanged();
+    }
+  }
+
   @override
   Future<List<Message>> getMessages({
     required String channelId,
@@ -162,10 +203,10 @@ class RealChatService implements ChatService {
 
       if (getMessageOpt == GetMessageOpt.lt && optMessageId != null) {
         refMessageId = optMessageId;
-        op = 'lt';
+        op = 'id_lt';
       } else if (getMessageOpt == GetMessageOpt.lte && optMessageId != null) {
         refMessageId = optMessageId;
-        op = 'lte';
+        op = 'id_lte';
       }
 
       config.logger.d(
@@ -417,20 +458,16 @@ class RealChatService implements ChatService {
             channelId: channelId,
             userId: userId,
             filePath: imageFile.path,
+            namespace: [channelId],
+            key: imageFile.name,
           )
           .then((uploadResponse) {
             // Extract image URL from response
             final responseData =
                 uploadResponse['data'] as Map<String, dynamic>? ??
                 uploadResponse;
-            final imageUrl = responseData['file'] as String?;
-
-            if (imageUrl == null) {
-              config.logger.e(
-                'No file URL in upload response: $uploadResponse',
-              );
-              throw Exception('Failed to get image URL from upload response');
-            }
+            final imageUrl =
+                "${config.baseUrl}/chat/resource/${responseData['full_path']}";
 
             config.logger.i('Image uploaded successfully. URL: $imageUrl');
 
@@ -558,20 +595,21 @@ class RealChatService implements ChatService {
 
       // Start upload and send in background without awaiting
       _httpClient
-          .uploadFile(channelId: channelId, userId: userId, filePath: file.path)
+          .uploadFile(
+            channelId: channelId,
+            userId: userId,
+            filePath: file.path,
+            namespace: [channelId],
+            key: file.name,
+          )
           .then((uploadResponse) {
             // Extract file URL from response
             final responseData =
                 uploadResponse['data'] as Map<String, dynamic>? ??
                 uploadResponse;
-            final fileUrl = responseData['file'] as String?;
-
-            if (fileUrl == null) {
-              config.logger.e(
-                'No file URL in upload response: $uploadResponse',
-              );
-              throw Exception('Failed to get file URL from upload response');
-            }
+            final fileUrl =
+                "${config.baseUrl}/chat/resource/${responseData['full_path']}";
+            // final fileUrl = responseData['file'] as String?;
 
             config.logger.i('File uploaded successfully. URL: $fileUrl');
 
@@ -638,6 +676,39 @@ class RealChatService implements ChatService {
           });
     } catch (e) {
       config.logger.e('Error preparing file message', error: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> deleteMessage({
+    required String channelId,
+    required String messageId,
+  }) async {
+    try {
+      config.logger.i(
+        "RealChatService.deleteMessage called for channel: $channelId",
+      );
+
+      _socketClient
+          .deleteMessages(messageIds: [messageId])
+          .then((response) {
+            config.logger.d("Full HTTP response: $response");
+            final responseData =
+                response['data'] as Map<String, dynamic>? ?? response;
+            final messageIds = (responseData['message_ids'] as List<dynamic>)
+                .cast<String>();
+            config.logger.d("API response - deleted message ids: $messageIds");
+
+            _messagesCache.removeWhere((m) => messageIds.contains(m.id));
+            _notifyMessagesChanged();
+            config.logger.i("Messages has been deleted");
+          })
+          .catchError((e) {
+            config.logger.e("Error deleting message", error: e);
+          });
+    } catch (e) {
+      config.logger.e("Error trying to delete message", error: e);
       rethrow;
     }
   }
@@ -710,20 +781,21 @@ class RealChatService implements ChatService {
 
       // Start upload and send in background without awaiting
       _httpClient
-          .uploadFile(channelId: channelId, userId: userId, filePath: filePath)
+          .uploadFile(
+            channelId: channelId,
+            userId: userId,
+            filePath: filePath,
+            namespace: [channelId],
+            key: Path(filePath).fileName(),
+          )
           .then((uploadResponse) {
             // Extract file URL from response
             final responseData =
                 uploadResponse['data'] as Map<String, dynamic>? ??
                 uploadResponse;
-            final fileUrl = responseData['file'] as String?;
-
-            if (fileUrl == null) {
-              config.logger.e(
-                'No file URL in upload response: $uploadResponse',
-              );
-              throw Exception('Failed to get file URL from upload response');
-            }
+            final fileUrl =
+                "${config.baseUrl}/chat/resource/${responseData['full_path']}";
+            // final fileUrl = responseData['file'] as String?;
 
             config.logger.i(
               'Voice recording uploaded successfully. URL: $fileUrl',
@@ -926,9 +998,7 @@ class RealChatService implements ChatService {
         '[RealChatService] Fetching channel name for: $channelId',
       );
 
-      final response = await _httpClient.getChannelDetails(
-        channelId: channelId,
-      );
+      final response = await _socketClient.getChannelDetails();
 
       // Extract the name from the response data
       final data = response['data'] as Map<String, dynamic>?;

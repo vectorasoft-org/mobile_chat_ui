@@ -13,6 +13,7 @@ class StreamChatHttpClient {
         connectTimeout: const Duration(seconds: 30),
         receiveTimeout: const Duration(seconds: 30),
         contentType: 'application/json',
+        validateStatus: (_) => true,
       ),
     );
     config.logger.i(
@@ -40,10 +41,12 @@ class StreamChatHttpClient {
         queryParams['op'] = op;
       }
 
-      config.logger.i('HTTP GET /chat/history with params: $queryParams');
+      config.logger.i(
+        'HTTP GET /server/chat/history with params: $queryParams',
+      );
 
       final response = await _dio.get(
-        '/chat/history',
+        '/server/chat/history',
         queryParameters: queryParams,
         options: Options(
           headers: {
@@ -112,20 +115,27 @@ class StreamChatHttpClient {
     required String channelId,
     required String userId,
     required String filePath,
+    required List<String> namespace,
+    required String key,
   }) async {
     try {
-      config.logger.i('HTTP POST /chat/upload-image for channel: $channelId');
+      config.logger.i(
+        'HTTP POST /chat/resource for channel: $channelId',
+      );
 
       final formData = FormData.fromMap({
-        'channel_id': channelId,
-        'user_id': userId,
+        // 'channel_id': channelId,
+        // 'user_id': userId,
         'file': await MultipartFile.fromFile(filePath),
       });
 
       config.logger.d('Uploading image file: $filePath');
 
+      final uploadPath = [...namespace, key].join("/");
+
       final response = await _dio.post(
-        '/chat/upload-image',
+        // '/server/chat/upload-image',
+        '/chat/resource/$uploadPath',
         data: formData,
         options: Options(
           headers: {
@@ -161,20 +171,26 @@ class StreamChatHttpClient {
     required String channelId,
     required String userId,
     required String filePath,
+    required List<String> namespace,
+    required String key,
   }) async {
     try {
-      config.logger.i('HTTP POST /chat/upload-file for channel: $channelId');
+      config.logger.i(
+        'HTTP POST /server/chat/upload-file for channel: $channelId',
+      );
 
       final formData = FormData.fromMap({
-        'channel_id': channelId,
-        'user_id': userId,
+        // 'channel_id': channelId,
+        // 'user_id': userId,
         'file': await MultipartFile.fromFile(filePath),
       });
 
       config.logger.d('Uploading file: $filePath');
 
+      final uploadPath = [...namespace, key].join("/");
+
       final response = await _dio.post(
-        '/chat/upload-file',
+        "/chat/resource/$uploadPath",
         data: formData,
         options: Options(
           headers: {
@@ -208,10 +224,12 @@ class StreamChatHttpClient {
     required String channelId,
   }) async {
     try {
-      config.logger.i('HTTP GET /chat/channel-details for channel: $channelId');
+      config.logger.i(
+        'HTTP GET /server/chat/channel-details for channel: $channelId',
+      );
 
       final response = await _dio.get(
-        '/chat/channel-details',
+        '/server/chat/channel-details',
         queryParameters: {
           'channel_id': channelId,
         },
@@ -252,7 +270,9 @@ class StreamChatHttpClient {
     List<Map<String, dynamic>>? attachments,
   }) async {
     try {
-      config.logger.i('HTTP POST /chat/send-message for channel: $channelId');
+      config.logger.i(
+        'HTTP POST /server/chat/send-message for channel: $channelId',
+      );
 
       // Build metadata with attachments if present
       final metadata = <String, dynamic>{};
@@ -274,7 +294,7 @@ class StreamChatHttpClient {
       config.logger.d('Request body: $body');
 
       final response = await _dio.post(
-        '/chat/send-message',
+        '/server/chat/send-message',
         data: body,
         options: Options(
           headers: {
@@ -308,7 +328,7 @@ class StreamChatHttpClient {
     required String userId,
   }) async {
     try {
-      config.logger.i('HTTP POST /chat/token for user: $userId');
+      config.logger.i('HTTP POST /chat/sign-jwt for user: $userId');
 
       final body = {
         'user_id': userId,
@@ -317,11 +337,12 @@ class StreamChatHttpClient {
       config.logger.d('Request body: $body');
 
       final response = await _dio.post(
-        '/chat/token',
+        '/chat/sign-jwt',
         data: body,
         options: Options(
           headers: {
             // 'x-api-key': config.apiKey,
+            // 'x-api-key': "b8kry8sm9qxm",
             'Accept': 'application/json',
           },
         ),
@@ -334,15 +355,15 @@ class StreamChatHttpClient {
             ? jsonDecode(response.data)
             : response.data;
 
-        config.logger.d('Message sent successfully');
+        config.logger.d('Got signed token');
         return jsonData as Map<String, dynamic>;
       } else {
         throw Exception(
-          'Failed to send message: ${response.statusCode} ${response.statusMessage}',
+          'Failed to get signed token: ${response.statusCode} ${response.statusMessage}',
         );
       }
     } catch (e) {
-      config.logger.e('Error sending message', error: e);
+      config.logger.e('Error getting signed token', error: e);
       rethrow;
     }
   }
