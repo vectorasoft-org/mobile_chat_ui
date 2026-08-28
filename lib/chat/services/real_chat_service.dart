@@ -579,12 +579,22 @@ class RealChatService extends ChatService {
         'File info - size: $fileSize bytes, MIME: $mimeType, type: $attachmentType',
       );
 
-      // Create ghost message immediately with attachment placeholder (optimistic UI update)
+      // For image files, build a data URI preview for the ghost message so the
+      // resolver can render the actual image while the upload is in progress,
+      // instead of showing an error for an empty URL.
+      String? dataUri;
+      if (mimeType.toLowerCase().startsWith('image/')) {
+        final bytes = await file.readAsBytes();
+        dataUri = 'data:$mimeType;base64,${base64Encode(bytes)}';
+      }
+
+      // Create ghost message immediately with placeholder placeholder (optimistic UI update)
       final ghostMessageId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
       final placeholderAttachment = <String, dynamic>{
         'type': attachmentType,
         'title': file.name,
-        'asset_url': '', // Will be updated when upload completes
+        'asset_url':
+            dataUri ?? '', // Data URI preview; replaced with real URL on upload
         'mime_type': mimeType,
         'file_size': fileSize,
       };
