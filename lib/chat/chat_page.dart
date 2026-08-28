@@ -685,7 +685,7 @@ class _ChatViewState extends State<ChatView> {
                       duration: const Duration(milliseconds: 300),
                       child: FloatingActionButton(
                         mini: true,
-                        backgroundColor: _chatConfig.theme.primaryColor,
+                        backgroundColor: theme.primaryColor,
                         onPressed: _scrollToBottom,
                         child: const Icon(
                           Icons.arrow_downward,
