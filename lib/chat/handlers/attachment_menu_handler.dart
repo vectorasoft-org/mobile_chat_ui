@@ -6,11 +6,13 @@ class AttachmentMenuHandler {
   final BuildContext context;
   final Function(Message, Map<String, dynamic>, String) onVideoPlay;
   final Function(Message, Map<String, dynamic>) onFileDownload;
+  final Function(Message) onDelete;
 
   AttachmentMenuHandler({
     required this.context,
     required this.onVideoPlay,
     required this.onFileDownload,
+    required this.onDelete,
   });
 
   void showImageAttachmentMenu(
@@ -32,6 +34,7 @@ class AttachmentMenuHandler {
             onFileDownload(message, attachment);
           },
         ),
+        _buildDeleteTile(message),
       ],
     );
   }
@@ -69,6 +72,7 @@ class AttachmentMenuHandler {
             onFileDownload(message, attachment);
           },
         ),
+        _buildDeleteTile(message),
       ],
     );
   }
@@ -92,6 +96,7 @@ class AttachmentMenuHandler {
             onFileDownload(message, attachment);
           },
         ),
+        _buildDeleteTile(message),
       ],
     );
   }
@@ -115,6 +120,7 @@ class AttachmentMenuHandler {
             onFileDownload(message, attachment);
           },
         ),
+        _buildDeleteTile(message),
       ],
     );
   }
@@ -138,7 +144,22 @@ class AttachmentMenuHandler {
             onFileDownload(message, attachment);
           },
         ),
+        _buildDeleteTile(message),
       ],
+    );
+  }
+
+  ListTile _buildDeleteTile(Message message) {
+    return ListTile(
+      leading: const Icon(Icons.delete_outline),
+      title: Text(
+        'Delete',
+        style: TextStyle(fontSize: 16.sp),
+      ),
+      onTap: () {
+        Navigator.pop(context);
+        onDelete(message);
+      },
     );
   }
 

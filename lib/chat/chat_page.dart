@@ -322,6 +322,9 @@ class _ChatViewState extends State<ChatView> {
           attachmentType,
         );
       },
+      onDelete: (message) {
+        _deleteMessage(message);
+      },
     );
 
     // Load user official code - will show error dialog if not found
@@ -1023,7 +1026,8 @@ class _ChatViewState extends State<ChatView> {
         (attachment['custom'] as Map?)?['duration'] as int? ??
         attachment['duration'] as int?;
     final durationMs =
-        durationMillis ?? (durationSeconds != null ? durationSeconds * 1000 : null);
+        durationMillis ??
+        (durationSeconds != null ? durationSeconds * 1000 : null);
     final assetUrl = attachment['asset_url'] as String?;
 
     // Check for malformed voice recording (missing URL or duration)
