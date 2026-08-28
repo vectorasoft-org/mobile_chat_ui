@@ -427,11 +427,19 @@ class RealChatService extends ChatService {
 
       config.logger.i('Uploading image with userId: $userId');
 
+      // Read image bytes to build a data URI preview for the ghost message.
+      // This lets the resolver render the actual image while the upload is
+      // still in progress, instead of showing an error for an empty URL.
+      final imageBytes = await imageFile.readAsBytes();
+      final mimeType = lookupMimeType(imageFile.path) ?? 'image/jpeg';
+      final dataUri = 'data:$mimeType;base64,${base64Encode(imageBytes)}';
+
       // Create ghost message immediately with attachment placeholder (optimistic UI update)
       final ghostMessageId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
       final placeholderAttachment = {
         'type': 'image',
-        'image_url': '', // Will be updated when upload completes
+        'image_url':
+            dataUri, // Data URI preview; replaced with real URL on upload
         'fallback': imageFile.name,
         'original_width': imageWidth,
         'original_height': imageHeight,
@@ -453,13 +461,16 @@ class RealChatService extends ChatService {
       _notifyMessagesChanged();
 
       // Start upload and send in background without awaiting
+      // Randomize the key so the same file can be uploaded multiple times
+      final uploadKey =
+          '${DateTime.now().millisecondsSinceEpoch}_${imageFile.name}';
       _httpClient
           .uploadImage(
             channelId: channelId,
             userId: userId,
             filePath: imageFile.path,
             namespace: [channelId],
-            key: imageFile.name,
+            key: uploadKey,
           )
           .then((uploadResponse) {
             // Extract image URL from response
@@ -594,13 +605,15 @@ class RealChatService extends ChatService {
       _notifyMessagesChanged();
 
       // Start upload and send in background without awaiting
+      // Randomize the key so the same file can be uploaded multiple times
+      final uploadKey = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
       _httpClient
           .uploadFile(
             channelId: channelId,
             userId: userId,
             filePath: file.path,
             namespace: [channelId],
-            key: file.name,
+            key: uploadKey,
           )
           .then((uploadResponse) {
             // Extract file URL from response
@@ -780,13 +793,16 @@ class RealChatService extends ChatService {
       _notifyMessagesChanged();
 
       // Start upload and send in background without awaiting
+      // Randomize the key so the same file can be uploaded multiple times
+      final uploadKey =
+          '${DateTime.now().millisecondsSinceEpoch}_${Path(filePath).fileName()}';
       _httpClient
           .uploadFile(
             channelId: channelId,
             userId: userId,
             filePath: filePath,
             namespace: [channelId],
-            key: Path(filePath).fileName(),
+            key: uploadKey,
           )
           .then((uploadResponse) {
             // Extract file URL from response

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -38,25 +39,27 @@ class RealImageResolver implements AttachmentResolver {
             borderRadius: BorderRadius.circular(8),
             child: SizedBox(
               width: 350,
-              child: CachedNetworkImage(
-                imageUrl: imageUrl,
-                fit: BoxFit.cover,
-                errorWidget: (context, url, error) {
-                  final theme = ChatThemeProvider.of(context);
-                  return Container(
-                    width: 350,
-                    height: _maxImageHeight,
-                    decoration: BoxDecoration(
-                      color: theme.inputBackground,
-                      borderRadius: BorderRadius.circular(8),
+              child: _isDataUri(imageUrl)
+                  ? _buildDataUriImage(imageUrl, 350, _maxImageHeight)
+                  : CachedNetworkImage(
+                      imageUrl: imageUrl,
+                      fit: BoxFit.cover,
+                      errorWidget: (context, url, error) {
+                        final theme = ChatThemeProvider.of(context);
+                        return Container(
+                          width: 350,
+                          height: _maxImageHeight,
+                          decoration: BoxDecoration(
+                            color: theme.inputBackground,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            Icons.image_not_supported,
+                            color: theme.textPrimary,
+                          ),
+                        );
+                      },
                     ),
-                    child: Icon(
-                      Icons.image_not_supported,
-                      color: theme.textPrimary,
-                    ),
-                  );
-                },
-              ),
             ),
           ),
         );
@@ -70,29 +73,63 @@ class RealImageResolver implements AttachmentResolver {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
-      child: CachedNetworkImage(
-        imageUrl: imageUrl,
-        width: 40,
-        height: 40,
-        fit: BoxFit.cover,
-        errorWidget: (context, url, error) {
-          final theme = ChatThemeProvider.of(context);
-          return Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: theme.inputBackground,
-              borderRadius: BorderRadius.circular(8),
+      child: _isDataUri(imageUrl)
+          ? _buildDataUriImage(imageUrl, 40, 40)
+          : CachedNetworkImage(
+              imageUrl: imageUrl,
+              width: 40,
+              height: 40,
+              fit: BoxFit.cover,
+              errorWidget: (context, url, error) {
+                final theme = ChatThemeProvider.of(context);
+                return Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: theme.inputBackground,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.image,
+                    size: 20,
+                    color: theme.textPrimary,
+                  ),
+                );
+              },
             ),
-            child: Icon(
-              Icons.image,
-              size: 20,
-              color: theme.textPrimary,
-            ),
-          );
-        },
-      ),
     );
+  }
+
+  bool _isDataUri(String url) => url.startsWith('data:');
+
+  Widget _buildDataUriImage(String dataUri, double width, double height) {
+    final bytes = _decodeDataUri(dataUri);
+    if (bytes == null) {
+      return Container(
+        width: width,
+        height: height,
+        color: Colors.grey[300],
+        child: const Icon(Icons.image_not_supported),
+      );
+    }
+    return Image.memory(
+      bytes,
+      width: width,
+      height: height,
+      fit: BoxFit.cover,
+      gaplessPlayback: true,
+    );
+  }
+
+  Uint8List? _decodeDataUri(String dataUri) {
+    final commaIndex = dataUri.indexOf(',');
+    if (commaIndex == -1) return null;
+    final base64Part = dataUri.substring(commaIndex + 1);
+    try {
+      return base64Decode(base64Part);
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
@@ -205,6 +242,12 @@ class RealImageResolver implements AttachmentResolver {
     if (url.startsWith('file://')) {
       final filePath = url.replaceFirst('file://', '');
       return FileImage(File(filePath));
+    }
+    if (url.startsWith('data:')) {
+      final bytes = _decodeDataUri(url);
+      if (bytes != null) {
+        return MemoryImage(bytes);
+      }
     }
     return NetworkImage(url);
   }

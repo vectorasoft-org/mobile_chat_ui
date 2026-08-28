@@ -1,3 +1,4 @@
 - Don't commit to git, I will commit it myself.
 - Use proper tools, don't try to edit sensitive files (package.json, pubspec.yaml, etc) directly.
-- Always do analysis using proper tools like `flutter analyze` after fixes.
+- Always do analysis using proper tools like `fvm flutter analyze` after fixes.
+- All flutter and dart CLI commands are prefixed with `fvm`, like `fvm flutter analyze` instead of `flutter analyze`.
