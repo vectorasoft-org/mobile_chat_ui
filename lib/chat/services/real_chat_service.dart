@@ -782,6 +782,7 @@ class RealChatService extends ChatService {
         'type': attachmentType,
         'asset_url': '', // Will be updated when upload completes
         'duration': durationSeconds,
+        'duration_millis': durationMilliseconds,
         'mime_type': mimeType,
       };
 

@@ -1014,11 +1014,16 @@ class _ChatViewState extends State<ChatView> {
     bool isSelf,
     Message message,
   ) {
-    // Duration from API is in seconds under custom.duration, convert to milliseconds
+    // Prefer granular millisecond duration if present, otherwise fall back to
+    // the seconds-based duration field (kept for backward compatibility).
+    final durationMillis =
+        (attachment['custom'] as Map?)?['duration_millis'] as int? ??
+        attachment['duration_millis'] as int?;
     final durationSeconds =
         (attachment['custom'] as Map?)?['duration'] as int? ??
         attachment['duration'] as int?;
-    final durationMs = durationSeconds != null ? durationSeconds * 1000 : null;
+    final durationMs =
+        durationMillis ?? (durationSeconds != null ? durationSeconds * 1000 : null);
     final assetUrl = attachment['asset_url'] as String?;
 
     // Check for malformed voice recording (missing URL or duration)
