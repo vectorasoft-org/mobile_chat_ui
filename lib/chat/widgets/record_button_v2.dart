@@ -53,6 +53,11 @@ class _RecordButtonV2State extends State<RecordButtonV2> {
       false; // Lock to prevent concurrent start attempts
   DateTime? _recordingStartTime;
   String? _currentFilePath;
+  // Tracks a pointer release that happened while recording was still starting
+  // (audio setup in progress). Replayed once recording actually begins so a
+  // quick tap isn't mistaken for a hold.
+  bool _pointerReleasedDuringStart = false;
+  bool _pointerReleasedNearButton = false;
 
   @override
   void initState() {
@@ -170,6 +175,20 @@ class _RecordButtonV2State extends State<RecordButtonV2> {
 
       setState(() {});
       widget.onRecordingStart();
+
+      // If the user already released the pointer while recording was starting
+      // (quick tap), replay that release now so it isn't mistaken for a hold.
+      if (_pointerReleasedDuringStart) {
+        _pointerReleasedDuringStart = false;
+        final nearButton = _pointerReleasedNearButton;
+        _pointerReleasedNearButton = false;
+        widget.logger.d(
+          'Replaying pointer release from start phase (nearButton=$nearButton)',
+        );
+        if (!_isStopping) {
+          widget.recordingController.onPointerUp(nearButton: nearButton);
+        }
+      }
     } catch (e) {
       widget.recordingController.cancel();
       widget.logger.e('Error during recording start: $e');
@@ -314,16 +333,22 @@ class _RecordButtonV2State extends State<RecordButtonV2> {
           }
         },
         onTapUp: (details) async {
-          // Only process pointer up if recording actually started (permission was granted and state transition happened)
-          if (!_isRecording) {
-            // Permission was denied or recording never started - nothing to do
-            return;
-          }
-
           final nearButton = _isNearButton(details.globalPosition);
           widget.logger.d(
             'onTapUp: nearButton=$nearButton, isHoldMode=${widget.recordingController.isHoldMode}, isRecording=$_isRecording',
           );
+
+          // If recording is still starting (audio setup in progress), remember
+          // the release so it can be replayed once recording actually begins.
+          // Otherwise a quick tap would be mistaken for a hold.
+          if (!_isRecording) {
+            if (_isStartingRecording) {
+              _pointerReleasedDuringStart = true;
+              _pointerReleasedNearButton = nearButton;
+            }
+            // Permission was denied or recording never started - nothing to do
+            return;
+          }
 
           if (!_isStopping) {
             widget.recordingController.onPointerUp(nearButton: nearButton);
