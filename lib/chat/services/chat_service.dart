@@ -92,9 +92,30 @@ abstract class ChatService {
     String? messageText,
   });
 
+  Future<void> sendVideo({
+    required String channelId,
+    required XFile videoFile,
+    String? messageText,
+  });
+
+  /// Send multiple images/videos as a single message with multiple attachments.
+  Future<void> sendMedia({
+    required String channelId,
+    required List<MediaAttachment> media,
+    String? messageText,
+  });
+
   Future<void> sendFile({
     required String channelId,
     required XFile file,
+    String? messageText,
+  });
+
+  /// Send multiple files as a single message with multiple attachments.
+  /// All files are sent as generic 'file' attachments.
+  Future<void> sendFiles({
+    required String channelId,
+    required List<XFile> files,
     String? messageText,
   });
 

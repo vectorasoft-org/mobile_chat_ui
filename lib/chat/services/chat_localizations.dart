@@ -147,4 +147,29 @@ class ChatLocalizations {
 
   static String deleteMessageError(BuildContext context) =>
       _getString('deleteMessageError', context);
+
+  static String copyMessage(BuildContext context) =>
+      _getString('copyMessage', context);
+
+  static String copyMessageSuccess(BuildContext context) =>
+      _getString('copyMessageSuccess', context);
+
+  static String copyMessageSuccessMessage(BuildContext context) =>
+      _getString('copyMessageSuccessMessage', context);
+
+  static String copyMessageError(BuildContext context) =>
+      _getString('copyMessageError', context);
+
+  static String copyMessageErrorMessage(BuildContext context) =>
+      _getString('copyMessageErrorMessage', context);
+
+  // Attachment Menu
+  static String downloadAttachment(BuildContext context) =>
+      _getString('downloadAttachment', context);
+
+  static String playVideo(BuildContext context) =>
+      _getString('playVideo', context);
+
+  static String deleteAttachment(BuildContext context) =>
+      _getString('deleteAttachment', context);
 }

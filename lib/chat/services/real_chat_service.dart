@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:rust/rust.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 // import 'package:rust/rust.dart';
 import 'package:vs_chat_flutter/chat/services/socket_io_client.dart';
 import 'package:vs_chat_flutter/core/ext/iterable.dart';
@@ -542,6 +543,470 @@ class RealChatService extends ChatService {
   }
 
   @override
+  Future<void> sendVideo({
+    required String channelId,
+    required XFile videoFile,
+    String? messageText,
+  }) async {
+    try {
+      config.logger.i(
+        'RealChatService.sendVideo called for channel: $channelId, video: ${videoFile.name}',
+      );
+
+      // Get user ID from configured storage
+      final userDataJson = config.storage.getString(config.userDataKey);
+
+      if (userDataJson == null) {
+        config.logger.e('User data not found in storage');
+        throw Exception('User not authenticated');
+      }
+
+      final userData = jsonDecode(userDataJson) as Map<String, dynamic>;
+      final userId = userData[config.userIdField]?.toString();
+
+      if (userId == null) {
+        config.logger.e('${config.userIdField} not found in user data');
+        throw Exception('Invalid user data - ${config.userIdField} missing');
+      }
+
+      config.logger.i('Uploading video with userId: $userId');
+
+      // Get file size and MIME type
+      final fileSize = await videoFile.length();
+      final mimeType = lookupMimeType(videoFile.path) ?? 'video/mp4';
+
+      config.logger.d(
+        'Video info - size: $fileSize bytes, MIME: $mimeType',
+      );
+
+      // Generate a thumbnail from the video client-side so we can include it
+      // as thumb_url even if the server doesn't generate one automatically.
+      final thumbnailPath = await _generateVideoThumbnail(videoFile.path);
+
+      // Build a data URI from the generated thumbnail so the ghost message can
+      // render it immediately while the upload is in progress.
+      String? thumbnailDataUri;
+      if (thumbnailPath != null) {
+        try {
+          final thumbBytes = await File(thumbnailPath).readAsBytes();
+          thumbnailDataUri =
+              'data:image/jpeg;base64,${base64Encode(thumbBytes)}';
+        } catch (e) {
+          config.logger.e('Failed to read thumbnail bytes', error: e);
+        }
+      }
+
+      // Create ghost message immediately with attachment placeholder (optimistic UI update)
+      final ghostMessageId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
+      final placeholderAttachment = <String, dynamic>{
+        'type': config.attachmentTypeVideo,
+        'title': videoFile.name,
+        // Point to the local video path so there's something to see immediately;
+        // replaced with the real URL once the upload completes.
+        'asset_url': videoFile.path,
+        // Data URI preview of the generated thumbnail; replaced with the real
+        // URL once the upload completes.
+        'thumb_url': thumbnailDataUri ?? '',
+        'mime_type': mimeType,
+        'file_size': fileSize,
+      };
+
+      final ghostMessage = Message(
+        id: ghostMessageId,
+        sender: userId,
+        text: messageText?.isNotEmpty == true ? messageText : null,
+        attachments: [placeholderAttachment],
+        isSending: true, // Ghost message is marked as sending
+        createdAt: DateTime.now().toIso8601String(),
+        updatedAt: DateTime.now().toIso8601String(),
+        isDeleted: false,
+      );
+
+      config.logger.d('Added ghost video message with ID: $ghostMessageId');
+      _messagesCache.add(ghostMessage);
+      _notifyMessagesChanged();
+
+      // Start upload and send in background without awaiting
+      // Randomize the key so the same file can be uploaded multiple times
+      final uploadKey =
+          '${DateTime.now().millisecondsSinceEpoch}_${videoFile.name}';
+
+      _httpClient
+          .uploadFile(
+            channelId: channelId,
+            userId: userId,
+            filePath: videoFile.path,
+            namespace: [channelId],
+            key: uploadKey,
+          )
+          .then((uploadResponse) {
+            // Extract file URL from response
+            final responseData =
+                uploadResponse['data'] as Map<String, dynamic>? ??
+                uploadResponse;
+            final fileUrl =
+                "${config.baseUrl}/chat/resource/${responseData['full_path']}";
+
+            config.logger.i('Video uploaded successfully. URL: $fileUrl');
+
+            // Update placeholder with real video URL
+            placeholderAttachment['asset_url'] = fileUrl;
+
+            // Prefer a server-provided thumbnail, otherwise fall back to the
+            // client-generated one we uploaded.
+            final serverThumbUrl = responseData['thumb_url'] as String?;
+            if (serverThumbUrl != null) {
+              placeholderAttachment['thumb_url'] = serverThumbUrl;
+              config.logger.d('Added server-provided video thumbnail URL');
+              // Send message with attachment
+              return _socketClient.sendMessage(
+                text: messageText,
+                attachments: [placeholderAttachment],
+              );
+            }
+
+            if (thumbnailPath != null) {
+              // Upload the client-generated thumbnail as an image and use its URL
+              final thumbKey =
+                  '${DateTime.now().millisecondsSinceEpoch}_thumb_${videoFile.name}.jpg';
+              return _httpClient
+                  .uploadImage(
+                    channelId: channelId,
+                    userId: userId,
+                    filePath: thumbnailPath,
+                    namespace: [channelId],
+                    key: thumbKey,
+                  )
+                  .then((thumbResponse) {
+                    final thumbData =
+                        thumbResponse['data'] as Map<String, dynamic>? ??
+                        thumbResponse;
+                    final thumbUrl =
+                        "${config.baseUrl}/chat/resource/${thumbData['full_path']}";
+                    placeholderAttachment['thumb_url'] = thumbUrl;
+                    config.logger.d(
+                      'Added client-generated video thumbnail URL: $thumbUrl',
+                    );
+                    // Send message with attachment
+                    return _socketClient.sendMessage(
+                      text: messageText,
+                      attachments: [placeholderAttachment],
+                    );
+                  });
+            }
+
+            // Send message with attachment
+            return _socketClient.sendMessage(
+              text: messageText,
+              attachments: [placeholderAttachment],
+            );
+          })
+          .then((messageResponse) {
+            // Extract message ID and timestamp from API response
+            config.logger.d('Message response: $messageResponse');
+            final messageData =
+                messageResponse['data'] as Map<String, dynamic>? ??
+                messageResponse;
+            final messageId = messageData['message_id'] as String? ?? 'unknown';
+            final sentAt =
+                messageData['sent_at'] as String? ??
+                DateTime.now().toIso8601String();
+
+            config.logger.d(
+              'API response - message_id: $messageId, sent_at: $sentAt',
+            );
+
+            // Remove ghost message and replace with confirmed message
+            _messagesCache.remove(ghostMessage);
+
+            // Construct confirmed Message object with real data from API
+            final confirmedMessage = Message(
+              id: messageId,
+              sender: userId,
+              text: messageText?.isNotEmpty == true ? messageText : null,
+              attachments: [placeholderAttachment],
+              isSending: false, // Now fully confirmed
+              createdAt: sentAt,
+              updatedAt: sentAt,
+              isDeleted: false,
+            );
+
+            _messagesCache.add(confirmedMessage);
+            _notifyMessagesChanged();
+            config.logger.i(
+              'Ghost video message confirmed with real ID: $messageId',
+            );
+          })
+          .catchError((e) {
+            // On error, remove the ghost message
+            config.logger.e('Error sending video', error: e);
+            // Remove failed message from UI
+            _messagesCache.remove(ghostMessage);
+            _notifyMessagesChanged();
+            // Don't rethrow since we've already handled the message
+          });
+    } catch (e) {
+      config.logger.e('Error preparing video message', error: e);
+      rethrow;
+    }
+  }
+
+  /// Generate a thumbnail image from a video file.
+  /// Returns the path to the generated thumbnail, or null if generation failed.
+  Future<String?> _generateVideoThumbnail(String videoPath) async {
+    try {
+      final thumbnailPath = await VideoThumbnail.thumbnailFile(
+        video: videoPath,
+        thumbnailPath: (await getTemporaryDirectory()).path,
+        imageFormat: ImageFormat.JPEG,
+        quality: 80,
+        maxWidth: 480,
+      );
+      config.logger.d('Generated video thumbnail at: $thumbnailPath');
+      return thumbnailPath;
+    } catch (e) {
+      config.logger.e('Failed to generate video thumbnail', error: e);
+      return null;
+    }
+  }
+
+  @override
+  Future<void> sendMedia({
+    required String channelId,
+    required List<MediaAttachment> media,
+    String? messageText,
+  }) async {
+    if (media.isEmpty) return;
+
+    try {
+      config.logger.i(
+        'RealChatService.sendMedia called for channel: $channelId, media count: ${media.length}',
+      );
+
+      // Get user ID from configured storage
+      final userDataJson = config.storage.getString(config.userDataKey);
+
+      if (userDataJson == null) {
+        config.logger.e('User data not found in storage');
+        throw Exception('User not authenticated');
+      }
+
+      final userData = jsonDecode(userDataJson) as Map<String, dynamic>;
+      final userId = userData[config.userIdField]?.toString();
+
+      if (userId == null) {
+        config.logger.e('${config.userIdField} not found in user data');
+        throw Exception('Invalid user data - ${config.userIdField} missing');
+      }
+
+      config.logger.i(
+        'Uploading ${media.length} media items with userId: $userId',
+      );
+
+      // Prepare placeholder attachments and per-item upload metadata.
+      // For images we build a data URI preview; for videos we generate a
+      // thumbnail and build a data URI from it so the ghost message can render
+      // something immediately while uploads are in progress.
+      final placeholderAttachments = <Map<String, dynamic>>[];
+      final uploadTasks = <Future<Map<String, dynamic>>>[];
+
+      for (final item in media) {
+        final file = item.file;
+        final mimeType =
+            lookupMimeType(file.path) ??
+            (item.isVideo ? 'video/mp4' : 'image/jpeg');
+
+        if (item.isVideo) {
+          final fileSize = await file.length();
+          final thumbnailPath = await _generateVideoThumbnail(file.path);
+
+          String? thumbnailDataUri;
+          if (thumbnailPath != null) {
+            try {
+              final thumbBytes = await File(thumbnailPath).readAsBytes();
+              thumbnailDataUri =
+                  'data:image/jpeg;base64,${base64Encode(thumbBytes)}';
+            } catch (e) {
+              config.logger.e('Failed to read thumbnail bytes', error: e);
+            }
+          }
+
+          final attachment = <String, dynamic>{
+            'type': config.attachmentTypeVideo,
+            'title': file.name,
+            'asset_url': file.path, // Local preview; replaced on upload
+            'thumb_url': thumbnailDataUri ?? '',
+            'mime_type': mimeType,
+            'file_size': fileSize,
+          };
+          placeholderAttachments.add(attachment);
+
+          final uploadKey =
+              '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
+          uploadTasks.add(
+            _httpClient
+                .uploadFile(
+                  channelId: channelId,
+                  userId: userId,
+                  filePath: file.path,
+                  namespace: [channelId],
+                  key: uploadKey,
+                )
+                .then((uploadResponse) {
+                  final responseData =
+                      uploadResponse['data'] as Map<String, dynamic>? ??
+                      uploadResponse;
+                  final fileUrl =
+                      "${config.baseUrl}/chat/resource/${responseData['full_path']}";
+                  attachment['asset_url'] = fileUrl;
+
+                  // Prefer server-provided thumbnail, else upload the
+                  // client-generated one.
+                  final serverThumbUrl = responseData['thumb_url'] as String?;
+                  if (serverThumbUrl != null) {
+                    attachment['thumb_url'] = serverThumbUrl;
+                    return uploadResponse;
+                  }
+                  if (thumbnailPath != null) {
+                    final thumbKey =
+                        '${DateTime.now().millisecondsSinceEpoch}_thumb_${file.name}.jpg';
+                    return _httpClient
+                        .uploadImage(
+                          channelId: channelId,
+                          userId: userId,
+                          filePath: thumbnailPath,
+                          namespace: [channelId],
+                          key: thumbKey,
+                        )
+                        .then((thumbResponse) {
+                          final thumbData =
+                              thumbResponse['data'] as Map<String, dynamic>? ??
+                              thumbResponse;
+                          final thumbUrl =
+                              "${config.baseUrl}/chat/resource/${thumbData['full_path']}";
+                          attachment['thumb_url'] = thumbUrl;
+                          return thumbResponse;
+                        });
+                  }
+                  return uploadResponse;
+                }),
+          );
+        } else {
+          // Image
+          final imageBytes = await file.readAsBytes();
+          final dataUri = 'data:$mimeType;base64,${base64Encode(imageBytes)}';
+
+          final attachment = <String, dynamic>{
+            'type': config.attachmentTypeImage,
+            'image_url': dataUri, // Data URI preview; replaced on upload
+            'fallback': file.name,
+            'original_width': item.imageWidth,
+            'original_height': item.imageHeight,
+          };
+          placeholderAttachments.add(attachment);
+
+          final uploadKey =
+              '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
+          uploadTasks.add(
+            _httpClient
+                .uploadImage(
+                  channelId: channelId,
+                  userId: userId,
+                  filePath: file.path,
+                  namespace: [channelId],
+                  key: uploadKey,
+                )
+                .then((uploadResponse) {
+                  final responseData =
+                      uploadResponse['data'] as Map<String, dynamic>? ??
+                      uploadResponse;
+                  final imageUrl =
+                      "${config.baseUrl}/chat/resource/${responseData['full_path']}";
+                  attachment['image_url'] = imageUrl;
+                  return uploadResponse;
+                }),
+          );
+        }
+      }
+
+      // Create ghost message immediately with all placeholder attachments
+      // (optimistic UI update).
+      final ghostMessageId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
+      final ghostMessage = Message(
+        id: ghostMessageId,
+        sender: userId,
+        text: messageText?.isNotEmpty == true ? messageText : null,
+        attachments: placeholderAttachments,
+        isSending: true, // Ghost message is marked as sending
+        createdAt: DateTime.now().toIso8601String(),
+        updatedAt: DateTime.now().toIso8601String(),
+        isDeleted: false,
+      );
+
+      config.logger.d('Added ghost media message with ID: $ghostMessageId');
+      _messagesCache.add(ghostMessage);
+      _notifyMessagesChanged();
+
+      // Upload all media in parallel, then send a single message with all
+      // attachments once every upload completes.
+      Future.wait(uploadTasks)
+          .then((_) {
+            return _socketClient.sendMessage(
+              text: messageText,
+              attachments: placeholderAttachments,
+            );
+          })
+          .then((messageResponse) {
+            // Extract message ID and timestamp from API response
+            config.logger.d('Message response: $messageResponse');
+            final messageData =
+                messageResponse['data'] as Map<String, dynamic>? ??
+                messageResponse;
+            final messageId = messageData['message_id'] as String? ?? 'unknown';
+            final sentAt =
+                messageData['sent_at'] as String? ??
+                DateTime.now().toIso8601String();
+
+            config.logger.d(
+              'API response - message_id: $messageId, sent_at: $sentAt',
+            );
+
+            // Remove ghost message and replace with confirmed message
+            _messagesCache.remove(ghostMessage);
+
+            // Construct confirmed Message object with real data from API
+            final confirmedMessage = Message(
+              id: messageId,
+              sender: userId,
+              text: messageText?.isNotEmpty == true ? messageText : null,
+              attachments: placeholderAttachments,
+              isSending: false, // Now fully confirmed
+              createdAt: sentAt,
+              updatedAt: sentAt,
+              isDeleted: false,
+            );
+
+            _messagesCache.add(confirmedMessage);
+            _notifyMessagesChanged();
+            config.logger.i(
+              'Ghost media message confirmed with real ID: $messageId',
+            );
+          })
+          .catchError((e) {
+            // On error, remove the ghost message
+            config.logger.e('Error sending media', error: e);
+            // Remove failed message from UI
+            _messagesCache.remove(ghostMessage);
+            _notifyMessagesChanged();
+            // Don't rethrow since we've already handled the message
+          });
+    } catch (e) {
+      config.logger.e('Error preparing media message', error: e);
+      rethrow;
+    }
+  }
+
+  @override
   Future<void> sendFile({
     required String channelId,
     required XFile file,
@@ -699,6 +1164,165 @@ class RealChatService extends ChatService {
           });
     } catch (e) {
       config.logger.e('Error preparing file message', error: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> sendFiles({
+    required String channelId,
+    required List<XFile> files,
+    String? messageText,
+  }) async {
+    if (files.isEmpty) return;
+
+    try {
+      config.logger.i(
+        'RealChatService.sendFiles called for channel: $channelId, file count: ${files.length}',
+      );
+
+      // Get user ID from configured storage
+      final userDataJson = config.storage.getString(config.userDataKey);
+
+      if (userDataJson == null) {
+        config.logger.e('User data not found in storage');
+        throw Exception('User not authenticated');
+      }
+
+      final userData = jsonDecode(userDataJson) as Map<String, dynamic>;
+      final userId = userData[config.userIdField]?.toString();
+
+      if (userId == null) {
+        config.logger.e('${config.userIdField} not found in user data');
+        throw Exception('Invalid user data - ${config.userIdField} missing');
+      }
+
+      config.logger.i('Uploading ${files.length} files with userId: $userId');
+
+      // Prepare placeholder attachments and per-file upload metadata.
+      // All files are sent as generic 'file' attachments regardless of MIME
+      // type. For image files we build a data URI preview so the ghost message
+      // can render something immediately while uploads are in progress.
+      final placeholderAttachments = <Map<String, dynamic>>[];
+      final uploadTasks = <Future<Map<String, dynamic>>>[];
+
+      for (final file in files) {
+        final fileSize = await file.length();
+        final mimeType =
+            lookupMimeType(file.path) ?? 'application/octet-stream';
+
+        // For image files, build a data URI preview for the ghost message.
+        String? dataUri;
+        if (mimeType.toLowerCase().startsWith('image/')) {
+          final bytes = await file.readAsBytes();
+          dataUri = 'data:$mimeType;base64,${base64Encode(bytes)}';
+        }
+
+        final attachment = <String, dynamic>{
+          'type': config.attachmentTypeFile, // Always generic 'file'
+          'title': file.name,
+          'asset_url': dataUri ?? '', // Data URI preview; replaced on upload
+          'mime_type': mimeType,
+          'file_size': fileSize,
+        };
+        placeholderAttachments.add(attachment);
+
+        final uploadKey =
+            '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
+        uploadTasks.add(
+          _httpClient
+              .uploadFile(
+                channelId: channelId,
+                userId: userId,
+                filePath: file.path,
+                namespace: [channelId],
+                key: uploadKey,
+              )
+              .then((uploadResponse) {
+                final responseData =
+                    uploadResponse['data'] as Map<String, dynamic>? ??
+                    uploadResponse;
+                final fileUrl =
+                    "${config.baseUrl}/chat/resource/${responseData['full_path']}";
+                attachment['asset_url'] = fileUrl;
+                return uploadResponse;
+              }),
+        );
+      }
+
+      // Create ghost message immediately with all placeholder attachments
+      // (optimistic UI update).
+      final ghostMessageId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
+      final ghostMessage = Message(
+        id: ghostMessageId,
+        sender: userId,
+        text: messageText?.isNotEmpty == true ? messageText : null,
+        attachments: placeholderAttachments,
+        isSending: true, // Ghost message is marked as sending
+        createdAt: DateTime.now().toIso8601String(),
+        updatedAt: DateTime.now().toIso8601String(),
+        isDeleted: false,
+      );
+
+      config.logger.d('Added ghost files message with ID: $ghostMessageId');
+      _messagesCache.add(ghostMessage);
+      _notifyMessagesChanged();
+
+      // Upload all files in parallel, then send a single message with all
+      // attachments once every upload completes.
+      Future.wait(uploadTasks)
+          .then((_) {
+            return _socketClient.sendMessage(
+              text: messageText,
+              attachments: placeholderAttachments,
+            );
+          })
+          .then((messageResponse) {
+            // Extract message ID and timestamp from API response
+            config.logger.d('Message response: $messageResponse');
+            final messageData =
+                messageResponse['data'] as Map<String, dynamic>? ??
+                messageResponse;
+            final messageId = messageData['message_id'] as String? ?? 'unknown';
+            final sentAt =
+                messageData['sent_at'] as String? ??
+                DateTime.now().toIso8601String();
+
+            config.logger.d(
+              'API response - message_id: $messageId, sent_at: $sentAt',
+            );
+
+            // Remove ghost message and replace with confirmed message
+            _messagesCache.remove(ghostMessage);
+
+            // Construct confirmed Message object with real data from API
+            final confirmedMessage = Message(
+              id: messageId,
+              sender: userId,
+              text: messageText?.isNotEmpty == true ? messageText : null,
+              attachments: placeholderAttachments,
+              isSending: false, // Now fully confirmed
+              createdAt: sentAt,
+              updatedAt: sentAt,
+              isDeleted: false,
+            );
+
+            _messagesCache.add(confirmedMessage);
+            _notifyMessagesChanged();
+            config.logger.i(
+              'Ghost files message confirmed with real ID: $messageId',
+            );
+          })
+          .catchError((e) {
+            // On error, remove the ghost message
+            config.logger.e('Error sending files', error: e);
+            // Remove failed message from UI
+            _messagesCache.remove(ghostMessage);
+            _notifyMessagesChanged();
+            // Don't rethrow since we've already handled the message
+          });
+    } catch (e) {
+      config.logger.e('Error preparing files message', error: e);
       rethrow;
     }
   }

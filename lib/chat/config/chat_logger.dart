@@ -7,6 +7,7 @@ abstract class ChatLogger {
   void d(String message);
   void w(String message);
   void e(String message, {Object? error, StackTrace? stackTrace});
+  void t(String message);
 }
 
 /// Simple console logger implementation using dart:developer
@@ -32,4 +33,7 @@ class ConsoleLogger implements ChatLogger {
       stackTrace: stackTrace,
     );
   }
+
+  @override
+  void t(String message) => developer.log("[TRACE] $message", level: 500);
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../models.dart';
+import '../services/chat_localizations.dart';
 
 class AttachmentMenuHandler {
   final BuildContext context;
@@ -26,7 +27,7 @@ class AttachmentMenuHandler {
         ListTile(
           leading: const Icon(Icons.download_rounded),
           title: Text(
-            'Download',
+            ChatLocalizations.downloadAttachment(context),
             style: TextStyle(fontSize: 16.sp),
           ),
           onTap: () {
@@ -50,7 +51,7 @@ class AttachmentMenuHandler {
         ListTile(
           leading: const Icon(Icons.play_circle_outline),
           title: Text(
-            'Play Video',
+            ChatLocalizations.playVideo(context),
             style: TextStyle(fontSize: 16.sp),
           ),
           onTap: () {
@@ -64,7 +65,7 @@ class AttachmentMenuHandler {
         ListTile(
           leading: const Icon(Icons.download_rounded),
           title: Text(
-            'Download',
+            ChatLocalizations.downloadAttachment(context),
             style: TextStyle(fontSize: 16.sp),
           ),
           onTap: () {
@@ -88,7 +89,7 @@ class AttachmentMenuHandler {
         ListTile(
           leading: const Icon(Icons.download_rounded),
           title: Text(
-            'Download',
+            ChatLocalizations.downloadAttachment(context),
             style: TextStyle(fontSize: 16.sp),
           ),
           onTap: () {
@@ -112,7 +113,7 @@ class AttachmentMenuHandler {
         ListTile(
           leading: const Icon(Icons.download_rounded),
           title: Text(
-            'Download',
+            ChatLocalizations.downloadAttachment(context),
             style: TextStyle(fontSize: 16.sp),
           ),
           onTap: () {
@@ -136,7 +137,7 @@ class AttachmentMenuHandler {
         ListTile(
           leading: const Icon(Icons.download_rounded),
           title: Text(
-            'Download',
+            ChatLocalizations.downloadAttachment(context),
             style: TextStyle(fontSize: 16.sp),
           ),
           onTap: () {
@@ -153,7 +154,7 @@ class AttachmentMenuHandler {
     return ListTile(
       leading: const Icon(Icons.delete_outline),
       title: Text(
-        'Delete',
+        ChatLocalizations.deleteAttachment(context),
         style: TextStyle(fontSize: 16.sp),
       ),
       onTap: () {

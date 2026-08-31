@@ -64,6 +64,22 @@ class AttachmentFile {
   });
 }
 
+/// A single image or video to be sent as part of a media message.
+/// Multiple of these are grouped into one message with multiple attachments.
+class MediaAttachment {
+  final XFile file;
+  final bool isVideo;
+  final int imageWidth;
+  final int imageHeight;
+
+  MediaAttachment({
+    required this.file,
+    required this.isVideo,
+    this.imageWidth = 1080,
+    this.imageHeight = 1080,
+  });
+}
+
 class UploadFileResponse {
   final String fileUrl;
 

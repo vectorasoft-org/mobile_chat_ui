@@ -2,8 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:mime/mime.dart';
 import '../config/chat_config.dart';
 import '../services/chat_service.dart';
+import '../models.dart';
 import 'chat_input_bar.dart';
 import 'chat_input_content.dart';
 import '../controllers/recording_controller.dart';
@@ -123,27 +125,32 @@ class _ChatInputSectionState extends State<ChatInputSection> {
       onPickFile: () async {
         widget.recordingController.cancel();
         try {
-          final result = await FilePicker.platform.pickFiles();
+          final result = await FilePicker.platform.pickFiles(
+            allowMultiple: true,
+          );
           if (result != null && result.files.isNotEmpty) {
-            final file = result.files.first;
             final chatService = widget.chatService;
 
             // Get optional message text from input
             final messageText = textInputMessageController.text.trim();
 
-            // Fire and forget - don't await
+            // Send all selected files as a single message with multiple
+            // attachments (fire and forget - don't await).
             chatService
-                .sendFile(
+                .sendFiles(
                   channelId: widget.channelId,
-                  file: file.xFile,
+                  files: result.files.map((f) => f.xFile).toList(),
                   messageText: messageText.isNotEmpty ? messageText : null,
                 )
                 .then((_) {
-                  // File sent successfully
+                  // Files sent successfully
                   textInputMessageController.clear();
                 })
                 .catchError((e) {
-                  widget.chatConfig.logger.e('Error sending file', error: e);
+                  widget.chatConfig.logger.e(
+                    'Error sending files',
+                    error: e,
+                  );
                 });
 
             // Return to chat immediately
@@ -155,34 +162,86 @@ class _ChatInputSectionState extends State<ChatInputSection> {
       },
       onPickImage: () async {
         widget.recordingController.cancel();
+        // Capture the messenger before any await so we can show a snackbar
+        // after the async pick without crossing an async gap.
+        final messenger = ScaffoldMessenger.of(context);
         try {
-          final pickedFile = await _imagePicker.pickImage(
-            source: ImageSource.gallery,
-          );
-          if (pickedFile != null) {
+          final pickedFiles = await _imagePicker.pickMultipleMedia();
+          if (pickedFiles.isNotEmpty) {
             final chatService = widget.chatService;
 
-            // Fire and forget - don't await
-            chatService
-                .sendImage(
-                  channelId: widget.channelId,
-                  imageFile: pickedFile,
+            // Get optional message text from input
+            final messageText = textInputMessageController.text.trim();
+
+            var rejectedCount = 0;
+            final media = <MediaAttachment>[];
+
+            // Classify each picked file as image or video. Only images and
+            // videos are allowed through the image button; all other file
+            // types must go through the "Add File" button.
+            for (final pickedFile in pickedFiles) {
+              final mimeType = lookupMimeType(pickedFile.path);
+              final isImage = mimeType?.startsWith('image/') == true;
+              final isVideo = mimeType?.startsWith('video/') == true;
+
+              if (!isImage && !isVideo) {
+                widget.chatConfig.logger.w(
+                  'Rejected non-media file picked via image button: '
+                  '${pickedFile.name} (mime: $mimeType)',
+                );
+                rejectedCount++;
+                continue;
+              }
+
+              media.add(
+                MediaAttachment(
+                  file: pickedFile,
+                  isVideo: isVideo,
                   imageWidth: 1080,
                   imageHeight: 1080,
-                )
-                .then((_) {
-                  // Image sent successfully
-                })
-                .catchError((e) {
-                  widget.chatConfig.logger.e('Error sending image', error: e);
-                });
+                ),
+              );
+            }
+
+            // Send all media as a single message with multiple attachments
+            // (fire and forget - don't await).
+            if (media.isNotEmpty) {
+              chatService
+                  .sendMedia(
+                    channelId: widget.channelId,
+                    media: media,
+                    messageText: messageText.isNotEmpty ? messageText : null,
+                  )
+                  .then((_) {
+                    // Media sent successfully
+                    textInputMessageController.clear();
+                  })
+                  .catchError((e) {
+                    widget.chatConfig.logger.e(
+                      'Error sending media',
+                      error: e,
+                    );
+                  });
+            }
+
+            // Notify the user if some files were rejected as non-media
+            if (rejectedCount > 0) {
+              messenger.showSnackBar(
+                SnackBar(
+                  content: Text(
+                    '$rejectedCount file(s) were not images or videos and '
+                    'were skipped. Use "Add File" for other file types.',
+                  ),
+                ),
+              );
+            }
 
             // Return to chat immediately
             widget.onMessageSent();
           }
         } catch (e) {
           widget.chatConfig.logger.e(
-            'Error picking image from gallery',
+            'Error picking image or video from gallery',
             error: e,
           );
         }

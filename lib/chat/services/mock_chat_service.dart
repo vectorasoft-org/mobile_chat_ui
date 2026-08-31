@@ -163,6 +163,54 @@ class MockChatService extends ChatService {
   }
 
   @override
+  Future<void> sendVideo({
+    required String channelId,
+    required XFile videoFile,
+    String? messageText,
+  }) async {
+    await sendAttachment(
+      channelId: channelId,
+      attachment: {
+        'type': 'video',
+        'asset_url': videoFile.path,
+        'title': videoFile.name,
+      },
+    );
+  }
+
+  @override
+  Future<void> sendMedia({
+    required String channelId,
+    required List<MediaAttachment> media,
+    String? messageText,
+  }) async {
+    final attachments = media.map((item) {
+      if (item.isVideo) {
+        return <String, dynamic>{
+          'type': 'video',
+          'asset_url': item.file.path,
+          'title': item.file.name,
+        };
+      }
+      return <String, dynamic>{
+        'type': 'image',
+        'image_url': item.file.path,
+        'title': item.file.name,
+      };
+    }).toList();
+
+    _messages.add(
+      Message(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        sender: _userName,
+        text: messageText?.isNotEmpty == true ? messageText : null,
+        attachments: attachments,
+      ),
+    );
+    _notifyMessages();
+  }
+
+  @override
   Future<void> sendFile({
     required String channelId,
     required XFile file,
@@ -176,6 +224,33 @@ class MockChatService extends ChatService {
         'title': file.name,
       },
     );
+  }
+
+  @override
+  Future<void> sendFiles({
+    required String channelId,
+    required List<XFile> files,
+    String? messageText,
+  }) async {
+    final attachments = files
+        .map(
+          (file) => <String, dynamic>{
+            'type': 'file',
+            'asset_url': file.path,
+            'title': file.name,
+          },
+        )
+        .toList();
+
+    _messages.add(
+      Message(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        sender: _userName,
+        text: messageText?.isNotEmpty == true ? messageText : null,
+        attachments: attachments,
+      ),
+    );
+    _notifyMessages();
   }
 
   @override

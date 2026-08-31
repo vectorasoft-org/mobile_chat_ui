@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:math';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:loading_overlay/loading_overlay.dart';
 import 'package:path_provider/path_provider.dart';
@@ -12,6 +11,7 @@ import 'package:open_file/open_file.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'config/chat_config.dart';
 import 'config/chat_theme.dart';
@@ -1233,17 +1233,31 @@ class _ChatViewState extends State<ChatView> {
                 borderRadius: BorderRadius.circular(8.r),
                 child: SizedBox(
                   width: 350.w,
-                  child: CachedNetworkImage(
-                    imageUrl: thumbUrl ?? '',
-                    fit: BoxFit.contain,
-                    errorWidget: (context, url, error) {
-                      return Container(
-                        height: 250,
-                        color: Colors.grey[300],
-                        child: const Icon(Icons.broken_image),
-                      );
-                    },
-                  ),
+                  child: _isDataUri(thumbUrl ?? '')
+                      ? Image.memory(
+                          _decodeDataUri(thumbUrl!),
+                          width: 350.w,
+                          fit: BoxFit.contain,
+                          gaplessPlayback: true,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              height: 250,
+                              color: Colors.grey[300],
+                              child: const Icon(Icons.broken_image),
+                            );
+                          },
+                        )
+                      : CachedNetworkImage(
+                          imageUrl: thumbUrl ?? '',
+                          fit: BoxFit.contain,
+                          errorWidget: (context, url, error) {
+                            return Container(
+                              height: 250,
+                              color: Colors.grey[300],
+                              child: const Icon(Icons.broken_image),
+                            );
+                          },
+                        ),
                 ),
               ),
               // Play button overlay
@@ -1261,6 +1275,19 @@ class _ChatViewState extends State<ChatView> {
         ),
       ),
     );
+  }
+
+  bool _isDataUri(String url) => url.startsWith('data:');
+
+  Uint8List _decodeDataUri(String dataUri) {
+    final commaIndex = dataUri.indexOf(',');
+    if (commaIndex == -1) return Uint8List(0);
+    final base64Part = dataUri.substring(commaIndex + 1);
+    try {
+      return base64Decode(base64Part);
+    } catch (_) {
+      return Uint8List(0);
+    }
   }
 
   /// Open video player with custom VideoPlayerWidget
@@ -1662,10 +1689,23 @@ class _ChatViewState extends State<ChatView> {
         ),
       ),
       builder: (context) {
+        final hasText = message.text != null && message.text!.isNotEmpty;
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (hasText)
+                ListTile(
+                  leading: const Icon(Icons.copy_rounded),
+                  title: Text(
+                    ChatLocalizations.copyMessage(context),
+                    style: TextStyle(fontSize: 16.sp),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _copyMessageText(message.text!);
+                  },
+                ),
               ListTile(
                 leading: const Icon(Icons.delete_outline),
                 title: Text(
@@ -1682,6 +1722,26 @@ class _ChatViewState extends State<ChatView> {
         );
       },
     );
+  }
+
+  Future<void> _copyMessageText(String text) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+      if (mounted) {
+        _showSnackbar(
+          ChatLocalizations.copyMessageSuccess(context),
+          ChatLocalizations.copyMessageSuccessMessage(context),
+        );
+      }
+    } catch (e) {
+      _chatConfig.logger.e('Error copying message text: $e');
+      if (mounted) {
+        _showSnackbar(
+          ChatLocalizations.copyMessageError(context),
+          ChatLocalizations.copyMessageErrorMessage(context),
+        );
+      }
+    }
   }
 
   Future<void> _deleteMessage(Message message) async {

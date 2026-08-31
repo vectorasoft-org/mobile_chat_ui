@@ -22,7 +22,8 @@ class StreamChatSocketIoClient {
   }) async {
     final currentSocket = _socket;
     if (currentSocket != null) {
-      currentSocket.destroy();
+      config.logger.w("Found old socket");
+      currentSocket.dispose();
     }
     _socket = IO.io(
       config.socketBaseUrl,
@@ -33,6 +34,7 @@ class StreamChatSocketIoClient {
             "api_key": config.apiKey,
             "token": token,
           })
+          .enableForceNew()
           .build(),
     );
     config.logger.i(
@@ -43,10 +45,11 @@ class StreamChatSocketIoClient {
     _socket!.on('deleted-message', _handleDeletedMessages);
 
     _socket!.connect();
+    config.logger.d("[socket] finished connecting");
   }
 
   void dispose() {
-    _socket?.dispose();
+    _socket?.disconnect().clearListeners();
   }
 
   void _handleNewMessage(dynamic ackRes) {
@@ -62,12 +65,19 @@ class StreamChatSocketIoClient {
     if (_socket == null) {
       throw Exception("socketClient is not initialized");
     }
-    final data = await _socket!.emitWithAckAsync(
-      "join-channel",
-      [
-        channelId,
-      ],
-    );
+    final data = await _socket!
+        .emitWithAckAsync(
+          "join-channel",
+          [
+            channelId,
+          ],
+        )
+        .timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            throw Exception("Could not join channel in time");
+          },
+        );
     if (data['status_code'] != 200) {
       throw Exception(
         "Failed to join channel `$channelId`: ${data['status_code']} ${data['message']}",
