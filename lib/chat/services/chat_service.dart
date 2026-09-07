@@ -125,6 +125,18 @@ abstract class ChatService {
     required int durationMilliseconds,
   });
 
+  /// Send a location attachment (e.g. the user's current location).
+  ///
+  /// The map preview thumbnail is resolved and cached to the external storage
+  /// service as part of sending, and its URL is baked into the attachment as
+  /// `thumb_url`.
+  Future<void> sendLocation({
+    required String channelId,
+    required double latitude,
+    required double longitude,
+    String? messageText,
+  });
+
   Future<void> deleteMessage({
     required String channelId,
     required String messageId,

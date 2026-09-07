@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:open_file/open_file.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -33,6 +34,7 @@ import 'handlers/file_download_handler.dart';
 import 'resolvers/image_resolver.dart';
 import 'services/chat_localizations.dart';
 import 'widgets/file_attachment_preview.dart';
+import 'widgets/location_map_preview.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({
@@ -855,6 +857,9 @@ class _ChatViewState extends State<ChatView> {
       case 'video':
         // _chatConfig.logger.d('Rendering video attachment');
         return _buildVideoAttachmentWidget(attachment, isSelf, message);
+      case 'location':
+        // _chatConfig.logger.d('Rendering location attachment');
+        return _buildLocationAttachmentWidget(attachment, isSelf, message);
       default:
         // _chatConfig.logger.d('Rendering unsupported attachment type: ${attachment['type']}');
         return Padding(
@@ -1287,6 +1292,140 @@ class _ChatViewState extends State<ChatView> {
       return base64Decode(base64Part);
     } catch (_) {
       return Uint8List(0);
+    }
+  }
+
+  /// Build a location attachment widget showing the coordinates and a link to
+  /// open the location in a maps application.
+  Widget _buildLocationAttachmentWidget(
+    Map<String, dynamic> attachment,
+    bool isSelf,
+    Message message,
+  ) {
+    final latitude = attachment['latitude'] as num?;
+    final longitude = attachment['longitude'] as num?;
+    final title = attachment['title'] as String? ?? 'Location';
+    final thumbUrl = attachment['thumb_url'] as String? ?? '';
+
+    if (latitude == null || longitude == null) {
+      return Padding(
+        padding: const EdgeInsets.all(4),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.grey[300],
+            borderRadius: BorderRadius.circular(8.r),
+          ),
+          child: Text(
+            'Location (invalid)',
+            style: TextStyle(fontSize: 12.sp, color: Colors.black54),
+          ),
+        ),
+      );
+    }
+
+    final lat = latitude.toDouble();
+    final lng = longitude.toDouble();
+    final coords = '${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)}';
+
+    // Use the currently selected theme (not the static config theme) so the
+    // bubble respects theme changes.
+    final theme = ChatThemeProvider.of(context);
+
+    return RepaintBoundary(
+      child: AnimatedOpacity(
+        opacity: message.isSending ? 0.5 : 1.0,
+        duration: const Duration(milliseconds: 200),
+        // No outer padding: the location bubble has no message text, and the
+        // MessageBubble already provides the themed, rounded background.
+        child: GestureDetector(
+          onTap: () => _openLocationInMaps(lat, lng),
+          onLongPress: () => _showAttachmentMenu(message, attachment, title),
+          child: Container(
+            width: 260.w,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8.r),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Static map preview (non-movable); fills the container
+                // width and derives its height from the 16:9 aspect ratio.
+                LocationMapPreview(
+                  latitude: lat,
+                  longitude: lng,
+                  thumbnailUrl: thumbUrl,
+                  onTap: () => _openLocationInMaps(lat, lng),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w600,
+                          overflow: TextOverflow.ellipsis,
+                          color: isSelf
+                              ? theme.messageSentText
+                              : theme.messageReceivedText,
+                        ),
+                        maxLines: 1,
+                      ),
+                      SizedBox(height: 4.h),
+                      Text(
+                        coords,
+                        style: TextStyle(
+                          fontSize: 11.sp,
+                          color: isSelf
+                              ? theme.messageSentText.withValues(alpha: 0.7)
+                              : theme.messageReceivedText.withValues(
+                                  alpha: 0.7,
+                                ),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Open the given coordinates in the platform's maps application.
+  Future<void> _openLocationInMaps(double latitude, double longitude) async {
+    try {
+      final uri = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude',
+      );
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched) {
+        _chatConfig.logger.e('Failed to open maps URL: $uri');
+        if (mounted) {
+          _showSnackbar('Error', 'Failed to open maps');
+        }
+      }
+    } catch (e) {
+      _chatConfig.logger.e('Error opening maps: $e');
+      if (mounted) {
+        _showSnackbar('Error', 'Failed to open maps: $e');
+      }
     }
   }
 

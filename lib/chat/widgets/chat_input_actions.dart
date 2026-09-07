@@ -7,6 +7,7 @@ class ChatInputActions extends StatelessWidget {
   final VoidCallback onPickFile;
   final VoidCallback onPickImage;
   final VoidCallback onTakePhoto;
+  final VoidCallback onPickLocation;
 
   const ChatInputActions({
     super.key,
@@ -14,6 +15,7 @@ class ChatInputActions extends StatelessWidget {
     required this.onPickFile,
     required this.onPickImage,
     required this.onTakePhoto,
+    required this.onPickLocation,
   });
 
   @override
@@ -35,6 +37,8 @@ class ChatInputActions extends StatelessWidget {
                   onPickFile();
                 } else if (value == 'camera') {
                   onTakePhoto();
+                } else if (value == 'location') {
+                  onPickLocation();
                 }
               },
               itemBuilder: (BuildContext context) => [
@@ -63,6 +67,20 @@ class ChatInputActions extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       const Text('Add File'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  value: 'location',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.location_on_outlined,
+                        size: 18,
+                        color: Colors.black87,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text('Add Location'),
                     ],
                   ),
                 ),

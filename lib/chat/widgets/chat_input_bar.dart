@@ -18,6 +18,7 @@ class ChatInputBar extends StatelessWidget {
   final VoidCallback onPickFile;
   final VoidCallback onPickImage;
   final VoidCallback onTakePhoto;
+  final VoidCallback onPickLocation;
   final VoidCallback onTextFocusOut;
   final RecordButtonCallbacks recordCallbacks;
   final Stream<double> Function() getVolumeStream;
@@ -39,6 +40,7 @@ class ChatInputBar extends StatelessWidget {
     required this.onPickFile,
     required this.onPickImage,
     required this.onTakePhoto,
+    required this.onPickLocation,
     required this.onTextFocusOut,
     required this.recordCallbacks,
     required this.getVolumeStream,
@@ -57,6 +59,7 @@ class ChatInputBar extends StatelessWidget {
           onPickFile: onPickFile,
           onPickImage: onPickImage,
           onTakePhoto: onTakePhoto,
+          onPickLocation: onPickLocation,
         ),
         ChatInputImageButton(
           hasFocus: hasFocus,

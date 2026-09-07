@@ -8,6 +8,7 @@ import '../services/chat_service.dart';
 import '../models.dart';
 import 'chat_input_bar.dart';
 import 'chat_input_content.dart';
+import 'send_location_dialog.dart';
 import '../controllers/recording_controller.dart';
 
 class ChatInputSection extends StatefulWidget {
@@ -280,6 +281,35 @@ class _ChatInputSectionState extends State<ChatInputSection> {
           );
         }
       },
+      onPickLocation: () async {
+        widget.recordingController.cancel();
+
+        // Show the confirmation dialog immediately so the user isn't left
+        // waiting. The dialog resolves the current position in the background
+        // and returns it on confirm, or null on cancel.
+        final position = await SendLocationDialog.show(
+          context,
+          buildThumbnailUrl: _buildLocationThumbnailUrl,
+        );
+
+        if (position == null || !mounted) return;
+
+        final chatService = widget.chatService;
+        chatService
+            .sendLocation(
+              channelId: widget.channelId,
+              latitude: position.latitude,
+              longitude: position.longitude,
+            )
+            .then((_) {
+              // Location sent successfully
+            })
+            .catchError((e) {
+              widget.chatConfig.logger.e('Error sending location', error: e);
+            });
+
+        widget.onMessageSent();
+      },
       onTextFocusOut: () => _textInputFocusNode.unfocus(),
       recordCallbacks: RecordButtonCallbacks(
         onRecordingComplete: (filePath, durationMs) async {
@@ -380,5 +410,20 @@ class _ChatInputSectionState extends State<ChatInputSection> {
         }
       },
     );
+  }
+
+  /// Build the raw URL for the server-provided location thumbnail PNG.
+  /// This is used only for the confirmation dialog preview; the thumbnail is
+  /// not uploaded/cached to the storage service until the user sends.
+  String _buildLocationThumbnailUrl(double latitude, double longitude) {
+    final base = widget.chatConfig.baseUrl;
+    if (base.isEmpty) return '';
+    final uri = Uri.parse('$base/chat/location/get-thumbnail').replace(
+      queryParameters: {
+        'lat': latitude.toString(),
+        'lon': longitude.toString(),
+      },
+    );
+    return uri.toString();
   }
 }

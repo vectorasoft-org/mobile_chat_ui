@@ -219,6 +219,65 @@ class StreamChatHttpClient {
     }
   }
 
+  /// Upload binary data to the chat API without writing to a temp file.
+  /// Sends multipart form data to /chat/upload-file endpoint.
+  /// Returns response with uploaded file URL.
+  Future<Map<String, dynamic>> uploadFileBytes({
+    required String channelId,
+    required String userId,
+    required String fileName,
+    required List<int> bytes,
+    required List<String> namespace,
+    required String key,
+  }) async {
+    try {
+      config.logger.i(
+        'HTTP POST /chat/resource (bytes) for channel: $channelId',
+      );
+
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: fileName,
+        ),
+      });
+
+      config.logger.d(
+        'Uploading bytes file: $fileName (${bytes.length} bytes)',
+      );
+
+      final uploadPath = [...namespace, key].join("/");
+
+      final response = await _dio.post(
+        "/chat/resource/$uploadPath",
+        data: formData,
+        options: Options(
+          headers: {
+            'x-api-key': config.apiKey,
+          },
+        ),
+      );
+
+      config.logger.i('HTTP upload response status: ${response.statusCode}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final jsonData = response.data is String
+            ? jsonDecode(response.data)
+            : response.data;
+
+        config.logger.d('Bytes file uploaded successfully');
+        return jsonData as Map<String, dynamic>;
+      } else {
+        throw Exception(
+          'Failed to upload bytes file: ${response.statusCode} ${response.statusMessage}',
+        );
+      }
+    } catch (e) {
+      config.logger.e('Error uploading bytes file', error: e);
+      rethrow;
+    }
+  }
+
   /// Fetch channel details including name
   Future<Map<String, dynamic>> getChannelDetails({
     required String channelId,

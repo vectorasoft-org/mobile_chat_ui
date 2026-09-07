@@ -270,6 +270,25 @@ class MockChatService extends ChatService {
   }
 
   @override
+  Future<void> sendLocation({
+    required String channelId,
+    required double latitude,
+    required double longitude,
+    String? messageText,
+  }) async {
+    await sendAttachment(
+      channelId: channelId,
+      attachment: {
+        'type': 'location',
+        'latitude': latitude,
+        'longitude': longitude,
+        'title': 'Location',
+        'thumb_url': '',
+      },
+    );
+  }
+
+  @override
   Future<void> deleteMessage({
     required String channelId,
     required String messageId,

@@ -1512,6 +1512,231 @@ class RealChatService extends ChatService {
   }
 
   @override
+  Future<void> sendLocation({
+    required String channelId,
+    required double latitude,
+    required double longitude,
+    String? messageText,
+  }) async {
+    final stopwatch = Stopwatch()..start();
+    try {
+      config.logger.i(
+        'LOCATION_SEND start channel: $channelId, lat: $latitude, lng: $longitude '
+        '(${stopwatch.elapsedMilliseconds}ms)',
+      );
+
+      // Get user ID from configured storage
+      final userDataJson = config.storage.getString(config.userDataKey);
+
+      if (userDataJson == null) {
+        config.logger.e('User data not found in storage');
+        throw Exception('User not authenticated');
+      }
+
+      final userData = jsonDecode(userDataJson) as Map<String, dynamic>;
+      final userId = userData[config.userIdField]?.toString();
+
+      if (userId == null) {
+        config.logger.e('${config.userIdField} not found in user data');
+        throw Exception('Invalid user data - ${config.userIdField} missing');
+      }
+
+      // Resolve the map preview thumbnail: fetch it from the server once,
+      // upload it to the storage service, and cache the resulting URL keyed by
+      // coordinates. This only happens now that the user has confirmed sending.
+      config.logger.i(
+        'LOCATION_SEND resolving thumbnail... (${stopwatch.elapsedMilliseconds}ms)',
+      );
+      final thumbUrl = await _getLocationThumbnailUrl(
+        latitude: latitude,
+        longitude: longitude,
+      );
+      config.logger.i(
+        'LOCATION_SEND thumbnail resolved, thumbUrl=$thumbUrl '
+        '(${stopwatch.elapsedMilliseconds}ms)',
+      );
+
+      // Build the location attachment. No file upload is required since the
+      // coordinates are sent directly as metadata. The map preview thumbnail
+      // URL (cached in the external storage service) is baked in as `thumb_url`
+      // so the renderer can display it without reconstructing it.
+      final attachment = <String, dynamic>{
+        'type': 'location',
+        'latitude': latitude,
+        'longitude': longitude,
+        'title': 'Location',
+        'thumb_url': thumbUrl,
+      };
+
+      // Create ghost message immediately (optimistic UI update)
+      final ghostMessageId = 'pending_${DateTime.now().millisecondsSinceEpoch}';
+      final ghostMessage = Message(
+        id: ghostMessageId,
+        sender: userId,
+        text: messageText?.isNotEmpty == true ? messageText : null,
+        attachments: [attachment],
+        isSending: true,
+        createdAt: DateTime.now().toIso8601String(),
+        updatedAt: DateTime.now().toIso8601String(),
+        isDeleted: false,
+      );
+
+      config.logger.d('Added ghost location message with ID: $ghostMessageId');
+      _messagesCache.add(ghostMessage);
+      _notifyMessagesChanged();
+
+      // Send in background without awaiting
+      _socketClient
+          .sendMessage(
+            text: messageText,
+            attachments: [attachment],
+          )
+          .then((messageResponse) {
+            config.logger.d('Message response: $messageResponse');
+            final messageData =
+                messageResponse['data'] as Map<String, dynamic>? ??
+                messageResponse;
+            final messageId = messageData['message_id'] as String? ?? 'unknown';
+            final sentAt =
+                messageData['sent_at'] as String? ??
+                DateTime.now().toIso8601String();
+
+            // Remove ghost message and replace with confirmed message
+            _messagesCache.remove(ghostMessage);
+
+            final confirmedMessage = Message(
+              id: messageId,
+              sender: userId,
+              text: messageText?.isNotEmpty == true ? messageText : null,
+              attachments: [attachment],
+              isSending: false,
+              createdAt: sentAt,
+              updatedAt: sentAt,
+              isDeleted: false,
+            );
+
+            _messagesCache.add(confirmedMessage);
+            _notifyMessagesChanged();
+            config.logger.i(
+              'LOCATION_SEND confirmed with real ID: $messageId '
+              '(${stopwatch.elapsedMilliseconds}ms)',
+            );
+          })
+          .catchError((e) {
+            config.logger.e('Error sending location', error: e);
+            _messagesCache.remove(ghostMessage);
+            _notifyMessagesChanged();
+          });
+      stopwatch.stop();
+    } catch (e) {
+      config.logger.e(
+        'LOCATION_SEND error after ${stopwatch.elapsedMilliseconds}ms',
+        error: e,
+      );
+      stopwatch.stop();
+      rethrow;
+    }
+  }
+
+  /// Resolve the map preview thumbnail URL for the given coordinates.
+  ///
+  /// Fetches the PNG from the server once, uploads it to the storage service,
+  /// and caches the resulting URL keyed by coordinates. Subsequent calls
+  /// return the cached URL without hitting the server again.
+  Future<String> _getLocationThumbnailUrl({
+    required double latitude,
+    required double longitude,
+  }) async {
+    final stopwatch = Stopwatch()..start();
+
+    // Storage key for the cached thumbnail URL for these coordinates.
+    final cacheKey =
+        'location_thumb_${latitude.toStringAsFixed(6)}_${longitude.toStringAsFixed(6)}';
+
+    // Return the cached URL if we already fetched and uploaded it.
+    final cached = config.storage.getString(cacheKey);
+    if (cached != null && cached.isNotEmpty) {
+      config.logger.d(
+        'LOCATION_THUMB cache hit for $cacheKey (${stopwatch.elapsedMilliseconds}ms)',
+      );
+      stopwatch.stop();
+      return cached;
+    }
+    config.logger.d(
+      'LOCATION_THUMB cache miss for $cacheKey (${stopwatch.elapsedMilliseconds}ms)',
+    );
+
+    try {
+      config.logger.i(
+        'LOCATION_THUMB fetching for lat: $latitude, lng: $longitude '
+        '(${stopwatch.elapsedMilliseconds}ms)',
+      );
+
+      // 1. Download the PNG from the server.
+      final thumbnailUrl =
+          Uri.parse('${config.baseUrl}/chat/location/get-thumbnail')
+              .replace(
+                queryParameters: {
+                  'lat': latitude.toString(),
+                  'lon': longitude.toString(),
+                },
+              )
+              .toString();
+      config.logger.i(
+        'LOCATION_THUMB downloading from $thumbnailUrl '
+        '(${stopwatch.elapsedMilliseconds}ms)',
+      );
+      final bytes = await _httpClient.downloadFileFromUrl(thumbnailUrl);
+      config.logger.i(
+        'LOCATION_THUMB downloaded ${bytes.length} bytes '
+        '(${stopwatch.elapsedMilliseconds}ms)',
+      );
+
+      // 2. Upload the bytes directly (no temp file write).
+      final fileName =
+          'location_thumb_${DateTime.now().millisecondsSinceEpoch}.png';
+      final uploadKey = '${DateTime.now().millisecondsSinceEpoch}_$fileName';
+      config.logger.i(
+        'LOCATION_THUMB uploading bytes file=$fileName '
+        '(${stopwatch.elapsedMilliseconds}ms)',
+      );
+      final uploadResponse = await _httpClient.uploadFileBytes(
+        channelId: _channelId ?? '',
+        userId: _userCode,
+        fileName: fileName,
+        bytes: bytes,
+        namespace: ['location'],
+        key: uploadKey,
+      );
+      final responseData =
+          uploadResponse['data'] as Map<String, dynamic>? ?? uploadResponse;
+      final resourceUrl =
+          "${config.baseUrl}/chat/resource/${responseData['full_path']}";
+      config.logger.i(
+        'LOCATION_THUMB uploaded, URL: $resourceUrl '
+        '(${stopwatch.elapsedMilliseconds}ms)',
+      );
+
+      // 3. Cache the resulting URL in the external storage service.
+      config.storage.setString(cacheKey, resourceUrl);
+      config.logger.i(
+        'LOCATION_THUMB cached ($cacheKey) -> $resourceUrl '
+        '(${stopwatch.elapsedMilliseconds}ms total)',
+      );
+      stopwatch.stop();
+
+      return resourceUrl;
+    } catch (e) {
+      config.logger.e(
+        'LOCATION_THUMB error after ${stopwatch.elapsedMilliseconds}ms',
+        error: e,
+      );
+      stopwatch.stop();
+      return '';
+    }
+  }
+
+  @override
   Future<String?> downloadFile({
     required Message message,
     String? imageUrl,

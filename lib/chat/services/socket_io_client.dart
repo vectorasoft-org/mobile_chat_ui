@@ -43,7 +43,8 @@ class StreamChatSocketIoClient {
 
     _socket!.on('new-message', _handleNewMessage);
     _socket!.on('deleted-message', _handleDeletedMessages);
-
+    _socket!.on('ping', (_) => config.logger.d("socket ping"));
+    _socket!.on('pong', (_) => config.logger.d("socket pong"));
     _socket!.connect();
     config.logger.d("[socket] finished connecting");
   }
