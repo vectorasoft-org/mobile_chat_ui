@@ -324,6 +324,13 @@ class _ChatViewState extends State<ChatView> {
           attachmentType,
         );
       },
+      onOpenLocation: (message, attachment) {
+        final latitude = attachment['latitude'] as num?;
+        final longitude = attachment['longitude'] as num?;
+        if (latitude != null && longitude != null) {
+          _openLocationInMaps(latitude.toDouble(), longitude.toDouble());
+        }
+      },
       onDelete: (message) {
         _deleteMessage(message);
       },
@@ -1921,6 +1928,9 @@ class _ChatViewState extends State<ChatView> {
         break;
       case 'audio':
         _menuHandler.showAudioFileMenu(message, attachment, fileName);
+        break;
+      case 'location':
+        _menuHandler.showLocationMenu(message, attachment, fileName);
         break;
       default:
         _menuHandler.showGenericFileMenu(message, attachment, fileName);

@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:rust/rust.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 // import 'package:rust/rust.dart';
 import 'package:vs_chat_flutter/chat/services/socket_io_client.dart';
@@ -25,7 +24,6 @@ class RealChatService extends ChatService {
   final List<Message> _messagesCache = [];
   late ChatTheme _selectedTheme;
   late String _channelName;
-  String? _channelId;
   late String _userName;
   late String _userCode;
   late String? _userAvatarUrl;
@@ -462,16 +460,11 @@ class RealChatService extends ChatService {
       _notifyMessagesChanged();
 
       // Start upload and send in background without awaiting
-      // Randomize the key so the same file can be uploaded multiple times
-      final uploadKey =
-          '${DateTime.now().millisecondsSinceEpoch}_${imageFile.name}';
       _httpClient
           .uploadImage(
             channelId: channelId,
             userId: userId,
             filePath: imageFile.path,
-            namespace: [channelId],
-            key: uploadKey,
           )
           .then((uploadResponse) {
             // Extract image URL from response
@@ -627,17 +620,11 @@ class RealChatService extends ChatService {
       _notifyMessagesChanged();
 
       // Start upload and send in background without awaiting
-      // Randomize the key so the same file can be uploaded multiple times
-      final uploadKey =
-          '${DateTime.now().millisecondsSinceEpoch}_${videoFile.name}';
-
       _httpClient
           .uploadFile(
             channelId: channelId,
             userId: userId,
             filePath: videoFile.path,
-            namespace: [channelId],
-            key: uploadKey,
           )
           .then((uploadResponse) {
             // Extract file URL from response
@@ -667,15 +654,11 @@ class RealChatService extends ChatService {
 
             if (thumbnailPath != null) {
               // Upload the client-generated thumbnail as an image and use its URL
-              final thumbKey =
-                  '${DateTime.now().millisecondsSinceEpoch}_thumb_${videoFile.name}.jpg';
               return _httpClient
                   .uploadImage(
                     channelId: channelId,
                     userId: userId,
                     filePath: thumbnailPath,
-                    namespace: [channelId],
-                    key: thumbKey,
                   )
                   .then((thumbResponse) {
                     final thumbData =
@@ -841,16 +824,12 @@ class RealChatService extends ChatService {
           };
           placeholderAttachments.add(attachment);
 
-          final uploadKey =
-              '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
           uploadTasks.add(
             _httpClient
                 .uploadFile(
                   channelId: channelId,
                   userId: userId,
                   filePath: file.path,
-                  namespace: [channelId],
-                  key: uploadKey,
                 )
                 .then((uploadResponse) {
                   final responseData =
@@ -868,15 +847,11 @@ class RealChatService extends ChatService {
                     return uploadResponse;
                   }
                   if (thumbnailPath != null) {
-                    final thumbKey =
-                        '${DateTime.now().millisecondsSinceEpoch}_thumb_${file.name}.jpg';
                     return _httpClient
                         .uploadImage(
                           channelId: channelId,
                           userId: userId,
                           filePath: thumbnailPath,
-                          namespace: [channelId],
-                          key: thumbKey,
                         )
                         .then((thumbResponse) {
                           final thumbData =
@@ -905,16 +880,12 @@ class RealChatService extends ChatService {
           };
           placeholderAttachments.add(attachment);
 
-          final uploadKey =
-              '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
           uploadTasks.add(
             _httpClient
                 .uploadImage(
                   channelId: channelId,
                   userId: userId,
                   filePath: file.path,
-                  namespace: [channelId],
-                  key: uploadKey,
                 )
                 .then((uploadResponse) {
                   final responseData =
@@ -1080,15 +1051,11 @@ class RealChatService extends ChatService {
       _notifyMessagesChanged();
 
       // Start upload and send in background without awaiting
-      // Randomize the key so the same file can be uploaded multiple times
-      final uploadKey = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
       _httpClient
           .uploadFile(
             channelId: channelId,
             userId: userId,
             filePath: file.path,
-            namespace: [channelId],
-            key: uploadKey,
           )
           .then((uploadResponse) {
             // Extract file URL from response
@@ -1227,16 +1194,12 @@ class RealChatService extends ChatService {
         };
         placeholderAttachments.add(attachment);
 
-        final uploadKey =
-            '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
         uploadTasks.add(
           _httpClient
               .uploadFile(
                 channelId: channelId,
                 userId: userId,
                 filePath: file.path,
-                namespace: [channelId],
-                key: uploadKey,
               )
               .then((uploadResponse) {
                 final responseData =
@@ -1428,16 +1391,11 @@ class RealChatService extends ChatService {
       _notifyMessagesChanged();
 
       // Start upload and send in background without awaiting
-      // Randomize the key so the same file can be uploaded multiple times
-      final uploadKey =
-          '${DateTime.now().millisecondsSinceEpoch}_${Path(filePath).fileName()}';
       _httpClient
           .uploadFile(
             channelId: channelId,
             userId: userId,
             filePath: filePath,
-            namespace: [channelId],
-            key: uploadKey,
           )
           .then((uploadResponse) {
             // Extract file URL from response
@@ -1548,6 +1506,7 @@ class RealChatService extends ChatService {
         'LOCATION_SEND resolving thumbnail... (${stopwatch.elapsedMilliseconds}ms)',
       );
       final thumbUrl = await _getLocationThumbnailUrl(
+        channelId: channelId,
         latitude: latitude,
         longitude: longitude,
       );
@@ -1644,6 +1603,7 @@ class RealChatService extends ChatService {
   /// and caches the resulting URL keyed by coordinates. Subsequent calls
   /// return the cached URL without hitting the server again.
   Future<String> _getLocationThumbnailUrl({
+    required String channelId,
     required double latitude,
     required double longitude,
   }) async {
@@ -1695,18 +1655,15 @@ class RealChatService extends ChatService {
       // 2. Upload the bytes directly (no temp file write).
       final fileName =
           'location_thumb_${DateTime.now().millisecondsSinceEpoch}.png';
-      final uploadKey = '${DateTime.now().millisecondsSinceEpoch}_$fileName';
       config.logger.i(
         'LOCATION_THUMB uploading bytes file=$fileName '
         '(${stopwatch.elapsedMilliseconds}ms)',
       );
       final uploadResponse = await _httpClient.uploadFileBytes(
-        channelId: _channelId ?? '',
+        channelId: channelId,
         userId: _userCode,
         fileName: fileName,
         bytes: bytes,
-        namespace: ['location'],
-        key: uploadKey,
       );
       final responseData =
           uploadResponse['data'] as Map<String, dynamic>? ?? uploadResponse;

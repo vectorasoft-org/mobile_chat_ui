@@ -115,8 +115,6 @@ class StreamChatHttpClient {
     required String channelId,
     required String userId,
     required String filePath,
-    required List<String> namespace,
-    required String key,
   }) async {
     try {
       config.logger.i(
@@ -124,18 +122,16 @@ class StreamChatHttpClient {
       );
 
       final formData = FormData.fromMap({
-        // 'channel_id': channelId,
+        'channel_id': channelId,
         // 'user_id': userId,
         'file': await MultipartFile.fromFile(filePath),
       });
 
       config.logger.d('Uploading image file: $filePath');
 
-      final uploadPath = [...namespace, key].join("/");
-
       final response = await _dio.post(
         // '/server/chat/upload-image',
-        '/chat/resource/$uploadPath',
+        '/chat/resource',
         data: formData,
         options: Options(
           headers: {
@@ -152,7 +148,10 @@ class StreamChatHttpClient {
             : response.data;
 
         config.logger.d('Image uploaded successfully');
-        return jsonData as Map<String, dynamic>;
+        // The payload (key, full_path, namespace) lives under data.object.
+        final data = jsonData['data'] as Map<String, dynamic>?;
+        final object = data?['object'] as Map<String, dynamic>?;
+        return object ?? jsonData as Map<String, dynamic>;
       } else {
         throw Exception(
           'Failed to upload image: ${response.statusCode} ${response.statusMessage}',
@@ -171,8 +170,6 @@ class StreamChatHttpClient {
     required String channelId,
     required String userId,
     required String filePath,
-    required List<String> namespace,
-    required String key,
   }) async {
     try {
       config.logger.i(
@@ -180,17 +177,15 @@ class StreamChatHttpClient {
       );
 
       final formData = FormData.fromMap({
-        // 'channel_id': channelId,
+        'channel_id': channelId,
         // 'user_id': userId,
         'file': await MultipartFile.fromFile(filePath),
       });
 
       config.logger.d('Uploading file: $filePath');
 
-      final uploadPath = [...namespace, key].join("/");
-
       final response = await _dio.post(
-        "/chat/resource/$uploadPath",
+        "/chat/resource",
         data: formData,
         options: Options(
           headers: {
@@ -207,7 +202,10 @@ class StreamChatHttpClient {
             : response.data;
 
         config.logger.d('File uploaded successfully');
-        return jsonData as Map<String, dynamic>;
+        // The payload (key, full_path, namespace) lives under data.object.
+        final data = jsonData['data'] as Map<String, dynamic>?;
+        final object = data?['object'] as Map<String, dynamic>?;
+        return object ?? jsonData as Map<String, dynamic>;
       } else {
         throw Exception(
           'Failed to upload file: ${response.statusCode} ${response.statusMessage}',
@@ -227,8 +225,6 @@ class StreamChatHttpClient {
     required String userId,
     required String fileName,
     required List<int> bytes,
-    required List<String> namespace,
-    required String key,
   }) async {
     try {
       config.logger.i(
@@ -236,6 +232,7 @@ class StreamChatHttpClient {
       );
 
       final formData = FormData.fromMap({
+        'channel_id': channelId,
         'file': MultipartFile.fromBytes(
           bytes,
           filename: fileName,
@@ -246,10 +243,8 @@ class StreamChatHttpClient {
         'Uploading bytes file: $fileName (${bytes.length} bytes)',
       );
 
-      final uploadPath = [...namespace, key].join("/");
-
       final response = await _dio.post(
-        "/chat/resource/$uploadPath",
+        "/chat/resource",
         data: formData,
         options: Options(
           headers: {
@@ -266,7 +261,10 @@ class StreamChatHttpClient {
             : response.data;
 
         config.logger.d('Bytes file uploaded successfully');
-        return jsonData as Map<String, dynamic>;
+        // The payload (key, full_path, namespace) lives under data.object.
+        final data = jsonData['data'] as Map<String, dynamic>?;
+        final object = data?['object'] as Map<String, dynamic>?;
+        return object ?? jsonData as Map<String, dynamic>;
       } else {
         throw Exception(
           'Failed to upload bytes file: ${response.statusCode} ${response.statusMessage}',

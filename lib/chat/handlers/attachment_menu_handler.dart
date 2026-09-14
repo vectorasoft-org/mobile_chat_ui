@@ -7,12 +7,14 @@ class AttachmentMenuHandler {
   final BuildContext context;
   final Function(Message, Map<String, dynamic>, String) onVideoPlay;
   final Function(Message, Map<String, dynamic>) onFileDownload;
+  final Function(Message, Map<String, dynamic>) onOpenLocation;
   final Function(Message) onDelete;
 
   AttachmentMenuHandler({
     required this.context,
     required this.onVideoPlay,
     required this.onFileDownload,
+    required this.onOpenLocation,
     required this.onDelete,
   });
 
@@ -143,6 +145,33 @@ class AttachmentMenuHandler {
           onTap: () {
             Navigator.pop(context);
             onFileDownload(message, attachment);
+          },
+        ),
+        _buildDeleteTile(message),
+      ],
+    );
+  }
+
+  /// Show the menu for a location attachment. A location has no downloadable
+  /// file, so it only offers opening the coordinates in a maps app and deleting
+  /// the message.
+  void showLocationMenu(
+    Message message,
+    Map<String, dynamic> attachment,
+    String fileName,
+  ) {
+    _showMenu(
+      fileName,
+      [
+        ListTile(
+          leading: const Icon(Icons.map_outlined),
+          title: Text(
+            ChatLocalizations.openInMaps(context),
+            style: TextStyle(fontSize: 16.sp),
+          ),
+          onTap: () {
+            Navigator.pop(context);
+            onOpenLocation(message, attachment);
           },
         ),
         _buildDeleteTile(message),

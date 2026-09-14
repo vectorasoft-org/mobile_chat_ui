@@ -170,6 +170,9 @@ class ChatLocalizations {
   static String playVideo(BuildContext context) =>
       _getString('playVideo', context);
 
+  static String openInMaps(BuildContext context) =>
+      _getString('openInMaps', context);
+
   static String deleteAttachment(BuildContext context) =>
       _getString('deleteAttachment', context);
 }
