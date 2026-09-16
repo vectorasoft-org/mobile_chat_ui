@@ -43,6 +43,10 @@ abstract class ChatService {
   /// Get cached channel name
   String getCachedChannelName();
 
+  /// Get the resolved channel id (created during initialization).
+  /// Returns null if the channel has not been created yet.
+  String? getChannelId();
+
   /// Get cached user name
   String getCachedUserName();
 

@@ -1,5 +1,6 @@
 import 'chat_logger.dart';
 import '../storage/api/chat_storage_adapter.dart';
+import '../models.dart';
 import 'chat_theme.dart';
 
 /// Central configuration object for the chat module
@@ -9,6 +10,14 @@ class ChatConfig {
   /// API Configuration
   final String baseUrl;
   final String apiKey;
+
+  /// Optional access token from the host application, sent as
+  /// `Authorization: Bearer <token>` on every HTTP client request.
+  final String? httpClientApiKey;
+
+  /// The type of channel to create during service initialization.
+  /// Defaults to a support channel.
+  final ChannelType channelType;
 
   final String socketBaseUrl;
 
@@ -50,6 +59,8 @@ class ChatConfig {
   const ChatConfig({
     required this.baseUrl,
     required this.apiKey,
+    this.httpClientApiKey,
+    this.channelType = const SupportChannelType(),
     required this.socketBaseUrl,
     required this.theme,
     required this.logger,
@@ -75,6 +86,8 @@ class ChatConfig {
   ChatConfig copyWith({
     String? baseUrl,
     String? apiKey,
+    String? httpClientApiKey,
+    ChannelType? channelType,
     String? socketBaseUrl,
     ChatTheme? theme,
     ChatLogger? logger,
@@ -87,6 +100,8 @@ class ChatConfig {
     return ChatConfig(
       baseUrl: baseUrl ?? this.baseUrl,
       apiKey: apiKey ?? this.apiKey,
+      httpClientApiKey: httpClientApiKey ?? this.httpClientApiKey,
+      channelType: channelType ?? this.channelType,
       socketBaseUrl: socketBaseUrl ?? this.socketBaseUrl,
       theme: theme ?? this.theme,
       logger: logger ?? this.logger,
@@ -96,5 +111,43 @@ class ChatConfig {
       userIdField: userIdField ?? this.userIdField,
       userIdFieldFallbacks: userIdFieldFallbacks ?? this.userIdFieldFallbacks,
     );
+  }
+
+  /// Debug-friendly representation.
+  ///
+  /// Secrets (`apiKey`, `httpClientApiKey`) are redacted to avoid leaking
+  /// credentials into logs.
+  @override
+  String toString() {
+    String redact(String? value) {
+      if (value == null || value.isEmpty) return 'null';
+      if (value.length <= 4) return '****';
+      return '****${value.substring(value.length - 4)}';
+    }
+
+    return 'ChatConfig('
+        'baseUrl: $baseUrl, '
+        'apiKey: ${redact(apiKey)}, '
+        'httpClientApiKey: ${redact(httpClientApiKey)}, '
+        'channelType: ${channelType.runtimeType}, '
+        'socketBaseUrl: $socketBaseUrl, '
+        'theme: ${theme.runtimeType}, '
+        'logger: ${logger.runtimeType}, '
+        'storage: ${storage.runtimeType}, '
+        'userDataKey: $userDataKey, '
+        'messageCacheKey: $messageCacheKey, '
+        'themeKey: $themeKey, '
+        'userIdField: $userIdField, '
+        'userIdFieldFallbacks: $userIdFieldFallbacks, '
+        'scrollThreshold: $scrollThreshold, '
+        'inputAreaDefaultHeight: $inputAreaDefaultHeight, '
+        'maxImageWidth: $maxImageWidth, '
+        'maxImageHeight: $maxImageHeight, '
+        'messageTypeText: $messageTypeText, '
+        'attachmentTypeImage: $attachmentTypeImage, '
+        'attachmentTypeFile: $attachmentTypeFile, '
+        'attachmentTypeVoice: $attachmentTypeVoice, '
+        'attachmentTypeAudio: $attachmentTypeAudio, '
+        'attachmentTypeVideo: $attachmentTypeVideo)';
   }
 }

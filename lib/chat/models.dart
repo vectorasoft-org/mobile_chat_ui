@@ -1,5 +1,32 @@
 import 'package:image_picker/image_picker.dart';
 
+/// Discriminated union describing the type of channel to create.
+/// Mirrors the `channel_type` field in the create-channel API contract.
+sealed class ChannelType {
+  const ChannelType();
+
+  /// Serializes this channel type to the API's `channel_type` JSON shape.
+  Map<String, dynamic> toJson();
+}
+
+/// A support channel: `{ "type": "support" }`.
+class SupportChannelType extends ChannelType {
+  const SupportChannelType();
+
+  @override
+  Map<String, dynamic> toJson() => {'type': 'support'};
+}
+
+/// A package channel: `{ "type": "package", "package_id": <id> }`.
+class PackageChannelType extends ChannelType {
+  final int packageId;
+
+  const PackageChannelType(this.packageId);
+
+  @override
+  Map<String, dynamic> toJson() => {'type': 'package', 'package_id': packageId};
+}
+
 class Message {
   final String id;
   final String sender;

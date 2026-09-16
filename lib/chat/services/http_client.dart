@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import '../config/chat_config.dart';
+import '../models.dart';
 
 class StreamChatHttpClient {
   final ChatConfig config;
@@ -19,6 +20,22 @@ class StreamChatHttpClient {
     config.logger.i(
       'StreamChatHttpClient initialized with baseUrl: ${config.baseUrl}',
     );
+  }
+
+  /// Builds the common request headers.
+  ///
+  /// The backend proxies auth to the upstream chat service, so clients do not
+  /// need to send `x-api-key`/`x-jwt-secret`. Only the optional
+  /// `Authorization: Bearer` token from the host application is forwarded.
+  Map<String, String> _baseHeaders() {
+    final headers = <String, String>{
+      'Accept': 'application/json',
+    };
+    final token = config.httpClientApiKey;
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    return headers;
   }
 
   /// Fetch messages from Stream Chat API
@@ -49,10 +66,7 @@ class StreamChatHttpClient {
         '/server/chat/history',
         queryParameters: queryParams,
         options: Options(
-          headers: {
-            'x-api-key': config.apiKey,
-            'Accept': 'application/json',
-          },
+          headers: _baseHeaders(),
         ),
       );
 
@@ -134,9 +148,7 @@ class StreamChatHttpClient {
         '/chat/resource',
         data: formData,
         options: Options(
-          headers: {
-            'x-api-key': config.apiKey,
-          },
+          headers: _baseHeaders(),
         ),
       );
 
@@ -188,9 +200,7 @@ class StreamChatHttpClient {
         "/chat/resource",
         data: formData,
         options: Options(
-          headers: {
-            'x-api-key': config.apiKey,
-          },
+          headers: _baseHeaders(),
         ),
       );
 
@@ -247,9 +257,7 @@ class StreamChatHttpClient {
         "/chat/resource",
         data: formData,
         options: Options(
-          headers: {
-            'x-api-key': config.apiKey,
-          },
+          headers: _baseHeaders(),
         ),
       );
 
@@ -276,6 +284,61 @@ class StreamChatHttpClient {
     }
   }
 
+  /// Create a channel on the chat API.
+  ///
+  /// Uses the bearer token from [ChatConfig.httpClientApiKey]. Returns the
+  /// created channel id on success (HTTP 201).
+  Future<String> createChannel({
+    required ChannelType channelType,
+  }) async {
+    try {
+      config.logger.i(
+        'HTTP POST /chat/create-channel with type: ${channelType.toJson()}',
+      );
+
+      final body = {
+        'channel_type': channelType.toJson(),
+      };
+
+      config.logger.d('Request body: $body');
+
+      final response = await _dio.post(
+        '/chat/create-channel',
+        data: body,
+        options: Options(
+          headers: _baseHeaders(),
+        ),
+      );
+
+      config.logger.i('HTTP response status: ${response.statusCode}');
+
+      if (response.statusCode == 201) {
+        final jsonData = response.data is String
+            ? jsonDecode(response.data)
+            : response.data;
+
+        final data = jsonData['data'] as Map<String, dynamic>?;
+        final channelId = data?['channel_id'] as String?;
+        if (channelId == null || channelId.isEmpty) {
+          throw Exception('Create channel response missing channel_id');
+        }
+
+        config.logger.d('Channel created successfully: $channelId');
+        return channelId;
+      } else {
+        throw Exception(
+          'Failed to create channel: ${response.statusCode} ${response.statusMessage}|${response.data}',
+        );
+      }
+    } on DioException catch (e) {
+      config.logger.e("Failed to create channel", error: e.response?.data);
+      rethrow;
+    } catch (e) {
+      config.logger.e('Error creating channel', error: e);
+      rethrow;
+    }
+  }
+
   /// Fetch channel details including name
   Future<Map<String, dynamic>> getChannelDetails({
     required String channelId,
@@ -291,10 +354,7 @@ class StreamChatHttpClient {
           'channel_id': channelId,
         },
         options: Options(
-          headers: {
-            'x-api-key': config.apiKey,
-            'Accept': 'application/json',
-          },
+          headers: _baseHeaders(),
         ),
       );
 
@@ -354,10 +414,7 @@ class StreamChatHttpClient {
         '/server/chat/send-message',
         data: body,
         options: Options(
-          headers: {
-            'x-api-key': config.apiKey,
-            'Accept': 'application/json',
-          },
+          headers: _baseHeaders(),
         ),
       );
 
@@ -397,11 +454,7 @@ class StreamChatHttpClient {
         '/chat/sign-jwt',
         data: body,
         options: Options(
-          headers: {
-            // 'x-api-key': config.apiKey,
-            // 'x-api-key': "b8kry8sm9qxm",
-            'Accept': 'application/json',
-          },
+          headers: _baseHeaders(),
         ),
       );
 

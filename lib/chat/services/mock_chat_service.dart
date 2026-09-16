@@ -64,6 +64,9 @@ class MockChatService extends ChatService {
   String getCachedChannelName() => _channelName;
 
   @override
+  String? getChannelId() => null;
+
+  @override
   String getCachedUserName() => _userName;
 
   @override

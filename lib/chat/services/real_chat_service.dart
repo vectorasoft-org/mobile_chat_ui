@@ -24,6 +24,7 @@ class RealChatService extends ChatService {
   final List<Message> _messagesCache = [];
   late ChatTheme _selectedTheme;
   late String _channelName;
+  late String? _channelId;
   late String _userName;
   late String _userCode;
   late String? _userAvatarUrl;
@@ -40,6 +41,7 @@ class RealChatService extends ChatService {
     );
     _selectedTheme = ChatTheme.houExpress();
     _channelName = 'Channel';
+    _channelId = null;
     _userName = 'Unknown';
     _userCode = 'Unknown ID';
     _userAvatarUrl = null;
@@ -56,7 +58,18 @@ class RealChatService extends ChatService {
     await _socketClient.initialize(
       token: token,
     );
+
+    // Ensure the channel exists on the server and capture its id.
+    _channelId = await _httpClient.createChannel(
+      channelType: config.channelType,
+    );
+    config.logger.i('Channel id resolved: $_channelId');
   }
+
+  /// The channel id resolved after [initialize] creates the channel.
+  /// Null until the channel has been created.
+  @override
+  String? getChannelId() => _channelId;
 
   @override
   void dispose() {

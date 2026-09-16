@@ -39,11 +39,11 @@ import 'widgets/location_map_preview.dart';
 class ChatPage extends StatefulWidget {
   const ChatPage({
     super.key,
-    required this.channelId,
+    required this.channelType,
     required this.rxdartAdapter,
   });
 
-  final String channelId;
+  final ChannelType channelType;
   final ChatReactiveAdapter rxdartAdapter;
 
   @override
@@ -56,6 +56,7 @@ class _ChatPageState extends State<ChatPage> {
   late final ChatReactiveAdapter _rxdartAdapter = widget.rxdartAdapter;
   late String _channelName;
   late ChatTheme _currentTheme;
+  String? _channelId;
 
   bool initializing = true;
 
@@ -64,7 +65,7 @@ class _ChatPageState extends State<ChatPage> {
     super.initState();
     // Initialize _chatConfig from the service
     _chatConfig = (_chatService as RealChatService).config;
-    _channelName = widget.channelId;
+    _channelName = 'Channel';
     _currentTheme = _chatService.getSelectedTheme();
 
     // Load theme after first frame to avoid build errors
@@ -77,12 +78,21 @@ class _ChatPageState extends State<ChatPage> {
     _chatService
         .initialize()
         .then((_) {
+          final channelId = _chatService.getChannelId();
+          if (channelId == null) {
+            throw Exception(
+              'Channel id was not resolved during initialization',
+            );
+          }
+          setState(() {
+            _channelId = channelId;
+          });
           return _chatService
-              .joinChannel(widget.channelId)
+              .joinChannel(channelId)
               .then((_) {
-                _chatConfig.logger.i("Joined channel `${widget.channelId}`");
+                _chatConfig.logger.i("Joined channel `$channelId`");
                 return _chatService
-                    .getChannelName(channelId: widget.channelId)
+                    .getChannelName(channelId: channelId)
                     .then((name) {
                       if (name != null && mounted) {
                         setState(() {
@@ -100,7 +110,7 @@ class _ChatPageState extends State<ChatPage> {
               })
               .catchError((e) {
                 _chatConfig.logger.e(
-                  "Error joining channel `${widget.channelId}`",
+                  "Error joining channel `$channelId`",
                   error: e,
                 );
               });
@@ -185,7 +195,7 @@ class _ChatPageState extends State<ChatPage> {
         builder: (context) => ChatThemeProvider(
           theme: _currentTheme,
           child: ChatChannelInfoPage(
-            channelId: widget.channelId,
+            channelId: _channelId ?? '',
             chatService: _chatService,
             chatConfig: _chatConfig,
           ),
@@ -243,7 +253,7 @@ class _ChatPageState extends State<ChatPage> {
               return ChatThemeProvider(
                 theme: themeSnapshot.data ?? _chatService.getSelectedTheme(),
                 child: ChatView(
-                  channelId: widget.channelId,
+                  channelId: _channelId ?? '',
                   rxdartAdapter: _rxdartAdapter,
                 ),
               );
