@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import '../widgets/video_player_widget.dart';
+import '../config/chat_config.dart';
 import '../config/chat_logger.dart';
 
 class VideoPlayerPage extends StatefulWidget {
@@ -11,6 +12,7 @@ class VideoPlayerPage extends StatefulWidget {
   final String? thumbnailUrl;
   final String title;
   final ChatLogger logger;
+  final ChatConfig? chatConfig;
   final VoidCallback Function(String videoUrl)? onOpenWithSystem;
 
   const VideoPlayerPage({
@@ -19,6 +21,7 @@ class VideoPlayerPage extends StatefulWidget {
     this.thumbnailUrl,
     required this.title,
     required this.logger,
+    this.chatConfig,
     this.onOpenWithSystem,
   });
 
@@ -81,7 +84,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         );
       }
 
-      await Dio().download(videoUrl, filePath);
+      await Dio().download(
+        videoUrl,
+        filePath,
+        options: Options(
+          headers: widget.chatConfig?.httpAuthHeaders() ?? const {},
+        ),
+      );
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -155,6 +164,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
             thumbnailUrl: widget.thumbnailUrl,
             title: widget.title,
             logger: _logger,
+            chatConfig: widget.chatConfig,
             onClose: () => Navigator.of(context).pop(),
             onOpenWithSystem: _handleOpenWithSystem,
             onDownload: _handleDownloadVideo,

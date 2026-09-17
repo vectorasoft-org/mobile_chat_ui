@@ -27,15 +27,40 @@ class StreamChatHttpClient {
   /// The backend proxies auth to the upstream chat service, so clients do not
   /// need to send `x-api-key`/`x-jwt-secret`. Only the optional
   /// `Authorization: Bearer` token from the host application is forwarded.
-  Map<String, String> _baseHeaders() {
-    final headers = <String, String>{
-      'Accept': 'application/json',
-    };
-    final token = config.httpClientApiKey;
-    if (token != null && token.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $token';
-    }
-    return headers;
+  Map<String, String> _baseHeaders() => config.httpAuthHeaders();
+
+  /// Logs a failed HTTP response with as much diagnostic detail as possible:
+  /// status code, status message and the response body (which usually contains
+  /// the server's validation/error explanation).
+  Exception _logAndThrowFailure(
+    String operation,
+    Response<dynamic> response,
+  ) {
+    final status = response.statusCode;
+    final statusMessage = response.statusMessage;
+    final body = response.data is String
+        ? response.data as String
+        : (response.data?.toString() ?? '<empty body>');
+
+    config.logger.e(
+      '$operation failed — statusCode: $status, statusMessage: $statusMessage, '
+      'response body: $body',
+    );
+
+    return Exception(
+      '$operation failed: $status $statusMessage. Body: $body',
+    );
+  }
+
+  /// Logs a DioException (network/timeout/cancellation) with its details.
+  void _logDioError(String operation, DioException e) {
+    final response = e.response;
+    config.logger.e(
+      '$operation DioException — type: ${e.type}, message: ${e.message}, '
+      'status: ${response?.statusCode}, '
+      'body: ${response?.data ?? '<no response body>'}',
+      error: e,
+    );
   }
 
   /// Fetch messages from Stream Chat API
@@ -81,10 +106,11 @@ class StreamChatHttpClient {
 
         return jsonData as Map<String, dynamic>;
       } else {
-        throw Exception(
-          'Failed to fetch messages: ${response.statusCode} ${response.statusMessage}',
-        );
+        throw _logAndThrowFailure('Fetch messages', response);
       }
+    } on DioException catch (e) {
+      _logDioError('Fetch messages', e);
+      rethrow;
     } catch (e) {
       config.logger.e('HTTP client error', error: e);
       rethrow;
@@ -100,6 +126,7 @@ class StreamChatHttpClient {
       final response = await _dio.get<List<int>>(
         fileUrl,
         options: Options(
+          headers: _baseHeaders(),
           responseType: ResponseType.bytes,
           followRedirects: true,
           validateStatus: (status) => status != null && status < 500,
@@ -112,10 +139,11 @@ class StreamChatHttpClient {
         );
         return response.data!;
       } else {
-        throw Exception(
-          'Failed to download file: ${response.statusCode} ${response.statusMessage}',
-        );
+        throw _logAndThrowFailure('Download file from $fileUrl', response);
       }
+    } on DioException catch (e) {
+      _logDioError('Download file from URL', e);
+      rethrow;
     } catch (e) {
       config.logger.e('Error downloading file from URL', error: e);
       rethrow;
@@ -165,10 +193,11 @@ class StreamChatHttpClient {
         final object = data?['object'] as Map<String, dynamic>?;
         return object ?? jsonData as Map<String, dynamic>;
       } else {
-        throw Exception(
-          'Failed to upload image: ${response.statusCode} ${response.statusMessage}',
-        );
+        throw _logAndThrowFailure('Upload image ($filePath)', response);
       }
+    } on DioException catch (e) {
+      _logDioError('Upload image', e);
+      rethrow;
     } catch (e) {
       config.logger.e('Error uploading image', error: e);
       rethrow;
@@ -217,10 +246,11 @@ class StreamChatHttpClient {
         final object = data?['object'] as Map<String, dynamic>?;
         return object ?? jsonData as Map<String, dynamic>;
       } else {
-        throw Exception(
-          'Failed to upload file: ${response.statusCode} ${response.statusMessage}',
-        );
+        throw _logAndThrowFailure('Upload file ($filePath)', response);
       }
+    } on DioException catch (e) {
+      _logDioError('Upload file', e);
+      rethrow;
     } catch (e) {
       config.logger.e('Error uploading file', error: e);
       rethrow;
@@ -274,10 +304,14 @@ class StreamChatHttpClient {
         final object = data?['object'] as Map<String, dynamic>?;
         return object ?? jsonData as Map<String, dynamic>;
       } else {
-        throw Exception(
-          'Failed to upload bytes file: ${response.statusCode} ${response.statusMessage}',
+        throw _logAndThrowFailure(
+          'Upload bytes file ($fileName, ${bytes.length} bytes)',
+          response,
         );
       }
+    } on DioException catch (e) {
+      _logDioError('Upload bytes file', e);
+      rethrow;
     } catch (e) {
       config.logger.e('Error uploading bytes file', error: e);
       rethrow;
@@ -368,10 +402,14 @@ class StreamChatHttpClient {
         config.logger.d('Channel details fetched successfully');
         return jsonData as Map<String, dynamic>;
       } else {
-        throw Exception(
-          'Failed to get channel details: ${response.statusCode} ${response.statusMessage}',
+        throw _logAndThrowFailure(
+          'Get channel details ($channelId)',
+          response,
         );
       }
+    } on DioException catch (e) {
+      _logDioError('Get channel details', e);
+      rethrow;
     } catch (e) {
       config.logger.e('Error fetching channel details', error: e);
       rethrow;
@@ -428,10 +466,11 @@ class StreamChatHttpClient {
         config.logger.d('Message sent successfully');
         return jsonData as Map<String, dynamic>;
       } else {
-        throw Exception(
-          'Failed to send message: ${response.statusCode} ${response.statusMessage}',
-        );
+        throw _logAndThrowFailure('Send message', response);
       }
+    } on DioException catch (e) {
+      _logDioError('Send message', e);
+      rethrow;
     } catch (e) {
       config.logger.e('Error sending message', error: e);
       rethrow;
@@ -468,10 +507,11 @@ class StreamChatHttpClient {
         config.logger.d('Got signed token');
         return jsonData as Map<String, dynamic>;
       } else {
-        throw Exception(
-          'Failed to get signed token: ${response.statusCode} ${response.statusMessage}',
-        );
+        throw _logAndThrowFailure('Get signed token for $userId', response);
       }
+    } on DioException catch (e) {
+      _logDioError('Get signed token', e);
+      rethrow;
     } catch (e) {
       config.logger.e('Error getting signed token', error: e);
       rethrow;

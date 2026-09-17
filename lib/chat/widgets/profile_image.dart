@@ -1,6 +1,7 @@
 import '../../constant/color.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../config/chat_config.dart';
 
 class ProfileImage extends StatefulWidget {
   const ProfileImage({
@@ -8,11 +9,13 @@ class ProfileImage extends StatefulWidget {
     required this.imageUrl,
     this.width,
     this.height,
+    this.chatConfig,
   });
 
   final String imageUrl;
   final double? width;
   final double? height;
+  final ChatConfig? chatConfig;
 
   @override
   State<ProfileImage> createState() => _ProfileImageState();
@@ -34,6 +37,7 @@ class _ProfileImageState extends State<ProfileImage> {
             width: widget.width,
             height: widget.height,
             imageUrl: widget.imageUrl,
+            httpHeaders: widget.chatConfig?.httpAuthHeaders() ?? const {},
             imageBuilder: (context, imageProvider) => Container(
               decoration: BoxDecoration(
                 image: DecorationImage(image: imageProvider, fit: BoxFit.cover),

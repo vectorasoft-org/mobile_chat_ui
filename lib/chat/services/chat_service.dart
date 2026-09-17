@@ -131,15 +131,24 @@ abstract class ChatService {
 
   /// Send a location attachment (e.g. the user's current location).
   ///
-  /// The map preview thumbnail is resolved and cached to the external storage
-  /// service as part of sending, and its URL is baked into the attachment as
-  /// `thumb_url`.
+  /// The map preview thumbnail is uploaded to the external storage service
+  /// and its URL is baked into the attachment as `thumb_url`.
+  ///
+  /// If [thumbnailBytes] is provided (typically fetched once by the
+  /// confirmation dialog), it is uploaded directly without re-downloading.
+  /// Otherwise the service downloads the thumbnail itself.
   Future<void> sendLocation({
     required String channelId,
     required double latitude,
     required double longitude,
     String? messageText,
+    Uint8List? thumbnailBytes,
   });
+
+  /// Download the raw location-map thumbnail PNG for the given URL.
+  /// Used by the send-location confirmation dialog to fetch the preview once;
+  /// the bytes can then be handed to [sendLocation] via [thumbnailBytes].
+  Future<Uint8List?> fetchLocationThumbnailBytes(String url);
 
   Future<void> deleteMessage({
     required String channelId,

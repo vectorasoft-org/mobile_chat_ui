@@ -313,11 +313,23 @@ class _ChatViewState extends State<ChatView> {
     _scrollController.addListener(_scrollListener);
 
     // Instantiate service dependencies directly (no GetX)
-    _audioPlayerController = AudioPlayerController(logger: _chatConfig.logger);
-    _audioCacheService = AudioCacheService(logger: _chatConfig.logger);
-    _imageResolver = RealImageResolver(chatService: _chatService);
+    _audioPlayerController = AudioPlayerController(
+      logger: _chatConfig.logger,
+      config: _chatConfig,
+    );
+    _audioCacheService = AudioCacheService(
+      logger: _chatConfig.logger,
+      config: _chatConfig,
+    );
+    _imageResolver = RealImageResolver(
+      chatService: _chatService,
+      chatConfig: _chatConfig,
+    );
     _recordingController = RecordingController(logger: _chatConfig.logger);
-    _downloadHandler = FileDownloadHandler(logger: _chatConfig.logger);
+    _downloadHandler = FileDownloadHandler(
+      logger: _chatConfig.logger,
+      config: _chatConfig,
+    );
 
     _menuHandler = AttachmentMenuHandler(
       context: context,
@@ -1271,6 +1283,7 @@ class _ChatViewState extends State<ChatView> {
                         )
                       : CachedNetworkImage(
                           imageUrl: thumbUrl ?? '',
+                          httpHeaders: _chatConfig.httpAuthHeaders(),
                           fit: BoxFit.contain,
                           errorWidget: (context, url, error) {
                             return Container(
@@ -1322,7 +1335,15 @@ class _ChatViewState extends State<ChatView> {
     final latitude = attachment['latitude'] as num?;
     final longitude = attachment['longitude'] as num?;
     final title = attachment['title'] as String? ?? 'Location';
-    final thumbUrl = attachment['thumb_url'] as String? ?? '';
+    final thumbUrl = (attachment['thumb_url'] as String?)?.isNotEmpty == true
+        ? attachment['thumb_url'] as String
+        // Fallback: if the uploaded thumbnail URL is missing (e.g. the
+        // fetch/upload step failed during send), fall back to the raw
+        // server-generated thumbnail URL so the preview still renders.
+        : _buildRawLocationThumbnailUrl(
+            latitude?.toDouble() ?? 0,
+            longitude?.toDouble() ?? 0,
+          );
 
     if (latitude == null || longitude == null) {
       return Padding(
@@ -1374,6 +1395,7 @@ class _ChatViewState extends State<ChatView> {
                   latitude: lat,
                   longitude: lng,
                   thumbnailUrl: thumbUrl,
+                  chatConfig: _chatConfig,
                   onTap: () => _openLocationInMaps(lat, lng),
                 ),
                 Padding(
@@ -1422,6 +1444,22 @@ class _ChatViewState extends State<ChatView> {
     );
   }
 
+  /// Build the raw server-generated location thumbnail URL for the given
+  /// coordinates. Used as a fallback when the attachment has no uploaded
+  /// `thumb_url` (e.g. the thumbnail fetch/upload failed during send).
+  String _buildRawLocationThumbnailUrl(double latitude, double longitude) {
+    final base = _chatConfig.baseUrl;
+    if (base.isEmpty) return '';
+    return Uri.parse('$base/chat/location/get-thumbnail')
+        .replace(
+          queryParameters: {
+            'lat': latitude.toString(),
+            'lon': longitude.toString(),
+          },
+        )
+        .toString();
+  }
+
   /// Open the given coordinates in the platform's maps application.
   Future<void> _openLocationInMaps(double latitude, double longitude) async {
     try {
@@ -1468,6 +1506,7 @@ class _ChatViewState extends State<ChatView> {
                 thumbnailUrl: thumbnailUrl,
                 title: title,
                 logger: _chatConfig.logger,
+                chatConfig: _chatConfig,
               ),
             ),
           ),

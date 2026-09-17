@@ -2,24 +2,26 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
+import '../config/chat_config.dart';
 import '../config/chat_logger.dart';
 
 class AudioCacheService {
   static AudioCacheService? _instance;
   late final ChatLogger _logger;
+  final ChatConfig? _config;
   final Dio _dio = Dio();
 
   // Track active downloads to allow cancellation
   final Map<String, CancelToken> _downloadTokens = {};
 
-  factory AudioCacheService({required ChatLogger logger}) {
-    _instance ??= AudioCacheService._internal(logger);
+  factory AudioCacheService({required ChatLogger logger, ChatConfig? config}) {
+    _instance ??= AudioCacheService._internal(logger, config);
     return _instance!;
   }
 
-  AudioCacheService._internal(ChatLogger logger) {
-    _logger = logger;
-  }
+  AudioCacheService._internal(ChatLogger logger, ChatConfig? config)
+    : _logger = logger,
+      _config = config;
 
   /// Get the cache file for an audio URL
   Future<File> _getCacheFile(String audioUrl) async {
@@ -76,6 +78,9 @@ class AudioCacheService {
           audioUrl,
           file.path,
           cancelToken: cancelToken,
+          options: Options(
+            headers: _config?.httpAuthHeaders() ?? const {},
+          ),
           onReceiveProgress: (received, total) {
             if (total > 0) {
               final progress = (received / total) * 100;

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_view/photo_view.dart';
 
+import '../config/chat_config.dart';
 import '../config/chat_theme_provider.dart';
 import '../models.dart';
 import '../services/chat_service.dart';
@@ -24,8 +25,13 @@ class RealImageResolver implements AttachmentResolver {
   static const double _maxImageHeight = 350;
 
   final ChatService? chatService;
+  final ChatConfig? chatConfig;
 
-  RealImageResolver({this.chatService});
+  RealImageResolver({this.chatService, this.chatConfig});
+
+  /// Headers for loading images served from the chat backend.
+  Map<String, String> get _httpHeaders =>
+      chatConfig?.httpAuthHeaders() ?? const {};
 
   @override
   Widget buildWidget(Map<String, dynamic> attachment, Message message) {
@@ -43,6 +49,7 @@ class RealImageResolver implements AttachmentResolver {
                   ? _buildDataUriImage(imageUrl, 350, _maxImageHeight)
                   : CachedNetworkImage(
                       imageUrl: imageUrl,
+                      httpHeaders: _httpHeaders,
                       fit: BoxFit.cover,
                       errorWidget: (context, url, error) {
                         final theme = ChatThemeProvider.of(context);
@@ -77,6 +84,7 @@ class RealImageResolver implements AttachmentResolver {
           ? _buildDataUriImage(imageUrl, 40, 40)
           : CachedNetworkImage(
               imageUrl: imageUrl,
+              httpHeaders: _httpHeaders,
               width: 40,
               height: 40,
               fit: BoxFit.cover,
@@ -249,7 +257,7 @@ class RealImageResolver implements AttachmentResolver {
         return MemoryImage(bytes);
       }
     }
-    return NetworkImage(url);
+    return NetworkImage(url, headers: _httpHeaders);
   }
 }
 

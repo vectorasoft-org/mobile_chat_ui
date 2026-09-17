@@ -56,6 +56,17 @@ class ChatConfig {
   final String attachmentTypeAudio;
   final String attachmentTypeVideo;
 
+  /// Convenience helper returning auth headers for direct HTTP requests to
+  /// [baseUrl] (e.g. `NetworkImage`, `CachedNetworkImage`, raw downloads).
+  ///
+  /// Returns `{'Authorization': 'Bearer <token>'}` when [httpClientApiKey] is
+  /// set, otherwise an empty map so it can be spread into headers unconditionally.
+  Map<String, String> httpAuthHeaders() {
+    final token = httpClientApiKey;
+    if (token == null || token.isEmpty) return const {};
+    return {'Authorization': 'Bearer $token'};
+  }
+
   const ChatConfig({
     required this.baseUrl,
     required this.apiKey,

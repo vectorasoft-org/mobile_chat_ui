@@ -1488,11 +1488,13 @@ class RealChatService extends ChatService {
     required double latitude,
     required double longitude,
     String? messageText,
+    Uint8List? thumbnailBytes,
   }) async {
     final stopwatch = Stopwatch()..start();
     try {
       config.logger.i(
-        'LOCATION_SEND start channel: $channelId, lat: $latitude, lng: $longitude '
+        'LOCATION_SEND start channel: $channelId, lat: $latitude, lng: $longitude, '
+        'thumbnailBytes: ${thumbnailBytes != null ? '${thumbnailBytes.length} bytes' : 'none (will fetch)'} '
         '(${stopwatch.elapsedMilliseconds}ms)',
       );
 
@@ -1512,9 +1514,10 @@ class RealChatService extends ChatService {
         throw Exception('Invalid user data - ${config.userIdField} missing');
       }
 
-      // Resolve the map preview thumbnail: fetch it from the server once,
-      // upload it to the storage service, and cache the resulting URL keyed by
-      // coordinates. This only happens now that the user has confirmed sending.
+      // Resolve the map preview thumbnail: upload it to the storage service
+      // and use the resulting URL as `thumb_url`. If the confirmation dialog
+      // already fetched the bytes, upload them directly (no second download);
+      // otherwise download the thumbnail first.
       config.logger.i(
         'LOCATION_SEND resolving thumbnail... (${stopwatch.elapsedMilliseconds}ms)',
       );
@@ -1522,6 +1525,7 @@ class RealChatService extends ChatService {
         channelId: channelId,
         latitude: latitude,
         longitude: longitude,
+        thumbnailBytes: thumbnailBytes,
       );
       config.logger.i(
         'LOCATION_SEND thumbnail resolved, thumbUrl=$thumbUrl '
@@ -1610,60 +1614,56 @@ class RealChatService extends ChatService {
     }
   }
 
-  /// Resolve the map preview thumbnail URL for the given coordinates.
+  /// Upload the location map preview thumbnail for the given coordinates and
+  /// return its resource URL.
   ///
-  /// Fetches the PNG from the server once, uploads it to the storage service,
-  /// and caches the resulting URL keyed by coordinates. Subsequent calls
-  /// return the cached URL without hitting the server again.
+  /// If [thumbnailBytes] is provided (e.g. pre-fetched by the confirmation
+  /// dialog), they are uploaded directly. Otherwise the PNG is downloaded
+  /// from the server first. Nothing is persisted between sends — the bytes
+  /// live only in memory for the duration of this call.
   Future<String> _getLocationThumbnailUrl({
     required String channelId,
     required double latitude,
     required double longitude,
+    Uint8List? thumbnailBytes,
   }) async {
     final stopwatch = Stopwatch()..start();
 
-    // Storage key for the cached thumbnail URL for these coordinates.
-    final cacheKey =
-        'location_thumb_${latitude.toStringAsFixed(6)}_${longitude.toStringAsFixed(6)}';
-
-    // Return the cached URL if we already fetched and uploaded it.
-    final cached = config.storage.getString(cacheKey);
-    if (cached != null && cached.isNotEmpty) {
-      config.logger.d(
-        'LOCATION_THUMB cache hit for $cacheKey (${stopwatch.elapsedMilliseconds}ms)',
-      );
-      stopwatch.stop();
-      return cached;
-    }
-    config.logger.d(
-      'LOCATION_THUMB cache miss for $cacheKey (${stopwatch.elapsedMilliseconds}ms)',
-    );
-
     try {
-      config.logger.i(
-        'LOCATION_THUMB fetching for lat: $latitude, lng: $longitude '
-        '(${stopwatch.elapsedMilliseconds}ms)',
-      );
+      Uint8List bytes;
+      if (thumbnailBytes != null && thumbnailBytes.isNotEmpty) {
+        config.logger.i(
+          'LOCATION_THUMB using pre-fetched bytes '
+          '(${thumbnailBytes.length} bytes) (${stopwatch.elapsedMilliseconds}ms)',
+        );
+        bytes = thumbnailBytes;
+      } else {
+        config.logger.i(
+          'LOCATION_THUMB fetching for lat: $latitude, lng: $longitude '
+          '(${stopwatch.elapsedMilliseconds}ms)',
+        );
 
-      // 1. Download the PNG from the server.
-      final thumbnailUrl =
-          Uri.parse('${config.baseUrl}/chat/location/get-thumbnail')
-              .replace(
-                queryParameters: {
-                  'lat': latitude.toString(),
-                  'lon': longitude.toString(),
-                },
-              )
-              .toString();
-      config.logger.i(
-        'LOCATION_THUMB downloading from $thumbnailUrl '
-        '(${stopwatch.elapsedMilliseconds}ms)',
-      );
-      final bytes = await _httpClient.downloadFileFromUrl(thumbnailUrl);
-      config.logger.i(
-        'LOCATION_THUMB downloaded ${bytes.length} bytes '
-        '(${stopwatch.elapsedMilliseconds}ms)',
-      );
+        // 1. Download the PNG from the server.
+        final thumbnailUrl =
+            Uri.parse('${config.baseUrl}/chat/location/get-thumbnail')
+                .replace(
+                  queryParameters: {
+                    'lat': latitude.toString(),
+                    'lon': longitude.toString(),
+                  },
+                )
+                .toString();
+        config.logger.i(
+          'LOCATION_THUMB downloading from $thumbnailUrl '
+          '(${stopwatch.elapsedMilliseconds}ms)',
+        );
+        final downloaded = await _httpClient.downloadFileFromUrl(thumbnailUrl);
+        bytes = Uint8List.fromList(downloaded);
+        config.logger.i(
+          'LOCATION_THUMB downloaded ${bytes.length} bytes '
+          '(${stopwatch.elapsedMilliseconds}ms)',
+        );
+      }
 
       // 2. Upload the bytes directly (no temp file write).
       final fileName =
@@ -1684,13 +1684,6 @@ class RealChatService extends ChatService {
           "${config.baseUrl}/chat/resource/${responseData['full_path']}";
       config.logger.i(
         'LOCATION_THUMB uploaded, URL: $resourceUrl '
-        '(${stopwatch.elapsedMilliseconds}ms)',
-      );
-
-      // 3. Cache the resulting URL in the external storage service.
-      config.storage.setString(cacheKey, resourceUrl);
-      config.logger.i(
-        'LOCATION_THUMB cached ($cacheKey) -> $resourceUrl '
         '(${stopwatch.elapsedMilliseconds}ms total)',
       );
       stopwatch.stop();
@@ -1703,6 +1696,22 @@ class RealChatService extends ChatService {
       );
       stopwatch.stop();
       return '';
+    }
+  }
+
+  @override
+  Future<Uint8List?> fetchLocationThumbnailBytes(String url) async {
+    try {
+      config.logger.i('LOCATION_THUMB downloading preview bytes from: $url');
+      final downloaded = await _httpClient.downloadFileFromUrl(url);
+      final bytes = Uint8List.fromList(downloaded);
+      config.logger.i(
+        'LOCATION_THUMB preview downloaded: ${bytes.length} bytes',
+      );
+      return bytes;
+    } catch (e) {
+      config.logger.e('LOCATION_THUMB error downloading preview', error: e);
+      return null;
     }
   }
 

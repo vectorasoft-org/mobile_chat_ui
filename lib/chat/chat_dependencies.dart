@@ -44,11 +44,18 @@ class ChatDependenciesFactory {
   }) {
     // Create instances directly without GetX
     final recordingController = RecordingController(logger: chatConfig.logger);
-    final audioCacheService = AudioCacheService(logger: chatConfig.logger);
-    final downloadHandler = FileDownloadHandler(logger: chatConfig.logger);
-    final imageResolver = RealImageResolver();
+    final audioCacheService = AudioCacheService(
+      logger: chatConfig.logger,
+      config: chatConfig,
+    );
+    final downloadHandler = FileDownloadHandler(
+      logger: chatConfig.logger,
+      config: chatConfig,
+    );
+    final imageResolver = RealImageResolver(chatConfig: chatConfig);
     final audioPlayerController = AudioPlayerController(
       logger: chatConfig.logger,
+      config: chatConfig,
     );
 
     return ChatDependencies(

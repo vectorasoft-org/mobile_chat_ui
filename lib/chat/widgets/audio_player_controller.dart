@@ -1,4 +1,5 @@
 import 'package:just_audio/just_audio.dart';
+import '../config/chat_config.dart';
 import '../config/chat_logger.dart';
 
 class AudioPlayerController {
@@ -7,16 +8,24 @@ class AudioPlayerController {
   late AudioPlayer _audioPlayer;
   String? _currentMessageId;
   late final ChatLogger _logger;
+  final ChatConfig? _config;
 
-  factory AudioPlayerController({required ChatLogger logger}) {
-    _instance ??= AudioPlayerController._internal(logger);
+  /// Headers used when streaming audio directly from a URL.
+  Map<String, String> get _httpHeaders =>
+      _config?.httpAuthHeaders() ?? const {};
+
+  factory AudioPlayerController({
+    required ChatLogger logger,
+    ChatConfig? config,
+  }) {
+    _instance ??= AudioPlayerController._internal(logger, config);
     return _instance!;
   }
 
-  AudioPlayerController._internal(ChatLogger logger) {
-    _audioPlayer = AudioPlayer();
-    _logger = logger;
-  }
+  AudioPlayerController._internal(ChatLogger logger, ChatConfig? config)
+    : _audioPlayer = AudioPlayer(),
+      _logger = logger,
+      _config = config;
 
   AudioPlayer get player => _audioPlayer;
 
@@ -43,7 +52,12 @@ class AudioPlayerController {
     );
 
     try {
-      await _audioPlayer.setUrl(audioUrl);
+      await _audioPlayer.setAudioSource(
+        AudioSource.uri(
+          Uri.parse(audioUrl),
+          headers: _httpHeaders,
+        ),
+      );
       _logger.i(
         '[AUDIO_CONTROLLER] setAudioSource - Success, got duration: ${_audioPlayer.duration}',
       );

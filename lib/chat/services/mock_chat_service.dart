@@ -278,6 +278,7 @@ class MockChatService extends ChatService {
     required double latitude,
     required double longitude,
     String? messageText,
+    Uint8List? thumbnailBytes,
   }) async {
     await sendAttachment(
       channelId: channelId,
@@ -290,6 +291,9 @@ class MockChatService extends ChatService {
       },
     );
   }
+
+  @override
+  Future<Uint8List?> fetchLocationThumbnailBytes(String url) async => null;
 
   @override
   Future<void> deleteMessage({

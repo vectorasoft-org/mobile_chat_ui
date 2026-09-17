@@ -467,6 +467,7 @@ class _ChatChannelInfoPageState extends State<ChatChannelInfoPage> {
                   imageUrl: _userAvatarUrl!,
                   width: 80.w,
                   height: 80.w,
+                  chatConfig: chatConfig,
                 )
               : CircleAvatar(
                   radius: 40.w,

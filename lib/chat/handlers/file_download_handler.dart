@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models.dart';
+import '../config/chat_config.dart';
 import '../config/chat_logger.dart';
 
 /// Callback for app-specific UI feedback (snackbars, toasts, etc)
@@ -15,16 +16,19 @@ typedef OnFileDownloaded =
 
 class FileDownloadHandler {
   final ChatLogger _logger;
+  final ChatConfig? _config;
   final OnUIFeedback? onError;
   final OnUIFeedback? onSuccess;
   final OnFileDownloaded? onFileDownloaded;
 
   FileDownloadHandler({
     required ChatLogger logger,
+    ChatConfig? config,
     this.onError,
     this.onSuccess,
     this.onFileDownloaded,
-  }) : _logger = logger;
+  }) : _logger = logger,
+       _config = config;
 
   Future<void> downloadFileWithSystemFallback(
     Message message,
@@ -111,6 +115,7 @@ class FileDownloadHandler {
         try {
           final httpClient = HttpClient();
           final request = await httpClient.getUrl(Uri.parse(fileUrl));
+          _config?.httpAuthHeaders().forEach(request.headers.set);
           final response = await request.close();
           if (response.statusCode == 200) {
             fileBytes ??= Uint8List.fromList(

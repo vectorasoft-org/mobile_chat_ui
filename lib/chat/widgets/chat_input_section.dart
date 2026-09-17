@@ -285,14 +285,18 @@ class _ChatInputSectionState extends State<ChatInputSection> {
         widget.recordingController.cancel();
 
         // Show the confirmation dialog immediately so the user isn't left
-        // waiting. The dialog resolves the current position in the background
-        // and returns it on confirm, or null on cancel.
-        final position = await SendLocationDialog.show(
+        // waiting. The dialog resolves the current position in the background,
+        // downloads the preview PNG once, and returns it on confirm together
+        // with the preview bytes (or null on cancel — bytes are discarded).
+        final result = await SendLocationDialog.show(
           context,
+          chatService: widget.chatService,
           buildThumbnailUrl: _buildLocationThumbnailUrl,
+          chatConfig: widget.chatConfig,
         );
 
-        if (position == null || !mounted) return;
+        if (result == null || !mounted) return;
+        final position = result.position;
 
         final chatService = widget.chatService;
         chatService
@@ -300,6 +304,10 @@ class _ChatInputSectionState extends State<ChatInputSection> {
               channelId: widget.channelId,
               latitude: position.latitude,
               longitude: position.longitude,
+              // Reuse the bytes downloaded for the dialog preview — no second
+              // download. The service uploads them and the buffer is then
+              // garbage-collected.
+              thumbnailBytes: result.thumbnailBytes,
             )
             .then((_) {
               // Location sent successfully

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import '../config/chat_config.dart';
 import '../config/chat_logger.dart';
 import '../config/chat_theme.dart';
 import '../config/chat_theme_provider.dart';
@@ -12,6 +13,7 @@ class VideoPlayerWidget extends StatefulWidget {
   final String? thumbnailUrl;
   final String title;
   final ChatLogger logger;
+  final ChatConfig? chatConfig;
   final VoidCallback onClose;
   final void Function(String videoUrl)? onOpenWithSystem;
   final Future<void> Function(String videoUrl)? onDownload;
@@ -22,6 +24,7 @@ class VideoPlayerWidget extends StatefulWidget {
     this.thumbnailUrl,
     required this.title,
     required this.logger,
+    this.chatConfig,
     required this.onClose,
     this.onOpenWithSystem,
     this.onDownload,
@@ -64,6 +67,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget>
       _logger.i('Initializing video: ${widget.videoUrl}');
       _controller = VideoPlayerController.networkUrl(
         Uri.parse(widget.videoUrl),
+        httpHeaders: widget.chatConfig?.httpAuthHeaders() ?? const {},
       );
 
       await _controller.initialize();

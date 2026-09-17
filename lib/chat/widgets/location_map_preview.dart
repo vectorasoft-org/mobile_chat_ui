@@ -1,29 +1,49 @@
+import 'dart:typed_data';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import '../config/chat_config.dart';
 
 /// A non-interactive map preview that renders a static map thumbnail for the
 /// given coordinates.
 ///
-/// The thumbnail is a PNG uploaded to the storage service (served from
-/// `/chat/resource/...`), whose URL is cached in the external storage service
-/// keyed by coordinates. The map is intentionally static (not
-/// movable/scrollable) and is meant to be used as a lightweight preview.
-/// Tapping it is handled by the caller (e.g. to open the location in the full
-/// Google Maps app).
+/// The thumbnail is a PNG either rendered from in-memory bytes
+/// ([LocationMapPreview.fromBytes], used by the confirmation dialog) or
+/// loaded from a URL via [CachedNetworkImage] (used by message bubbles —
+/// disk caching avoids re-fetching the same resource URL on every rebuild). The map is intentionally static (not movable/scrollable)
+/// and is meant to be used as a lightweight preview. Tapping it is handled
+/// by the caller (e.g. to open the location in the full Google Maps app).
 class LocationMapPreview extends StatelessWidget {
   final double latitude;
   final double longitude;
+  final Uint8List? thumbnailBytes;
   final String thumbnailUrl;
+  final bool isLoading;
   final VoidCallback? onTap;
+  final ChatConfig? chatConfig;
 
   const LocationMapPreview({
     super.key,
     required this.latitude,
     required this.longitude,
-    required this.thumbnailUrl,
+    this.thumbnailUrl = '',
+    this.thumbnailBytes,
+    this.isLoading = false,
     this.onTap,
+    this.chatConfig,
   });
+
+  /// Renders the preview from in-memory PNG bytes (no network, no cache).
+  const LocationMapPreview.fromBytes({
+    super.key,
+    required this.latitude,
+    required this.longitude,
+    required this.thumbnailBytes,
+    this.isLoading = false,
+    this.onTap,
+  }) : thumbnailUrl = '',
+       chatConfig = null;
 
   @override
   Widget build(BuildContext context) {
@@ -35,21 +55,33 @@ class LocationMapPreview extends StatelessWidget {
         // of relying on hard-coded dimensions.
         child: AspectRatio(
           aspectRatio: 16 / 9,
-          // Static map thumbnail. Uses CachedNetworkImage so the browser /
-          // gallery caches the image. If no thumbnail URL is available yet
-          // (the placeholder stage), show a loading/placeholder preview. If
-          // the URL fails to load, fall back to the placeholder.
-          child: thumbnailUrl.isNotEmpty
-              ? CachedNetworkImage(
-                  imageUrl: thumbnailUrl,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) => _buildPlaceholder(),
-                  errorWidget: (context, url, error) => _buildPlaceholder(),
-                )
-              : _buildPlaceholder(),
+          // Prefer in-memory bytes (dialog preview). Otherwise load via
+          // CachedNetworkImage (disk-cached across rebuilds). If no
+          // bytes/URL are available or the load fails, show the placeholder.
+          child: _buildImage(),
         ),
       ),
     );
+  }
+
+  Widget _buildImage() {
+    if (thumbnailBytes != null && thumbnailBytes!.isNotEmpty) {
+      return Image.memory(
+        thumbnailBytes!,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+      );
+    }
+    if (thumbnailUrl.isNotEmpty) {
+      return CachedNetworkImage(
+        imageUrl: thumbnailUrl,
+        httpHeaders: chatConfig?.httpAuthHeaders() ?? const {},
+        fit: BoxFit.cover,
+        placeholder: (context, url) => _buildPlaceholder(),
+        errorWidget: (context, url, error) => _buildPlaceholder(),
+      );
+    }
+    return _buildPlaceholder();
   }
 
   Widget _buildPlaceholder() {
