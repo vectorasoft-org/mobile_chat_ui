@@ -1,12 +1,13 @@
 import 'package:vs_chat_flutter/chat/config/chat_config.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:vs_chat_flutter/chat/models.dart';
-import 'package:vs_chat_flutter/chat/services/chat_reactive_adapter.dart';
 import 'package:vs_chat_flutter/chat/services/chat_service.dart';
 
 class StreamChatSocketIoClient {
   final ChatConfig config;
   IO.Socket? _socket;
+  String? _firstToken;
+  String? _joinedChannel;
 
   void Function(Message)? onNewMessage;
   void Function(List<String>)? onDeletedMessages;
@@ -20,6 +21,7 @@ class StreamChatSocketIoClient {
   Future<void> initialize({
     required String token,
   }) async {
+    _firstToken = token;
     final currentSocket = _socket;
     if (currentSocket != null) {
       config.logger.w("Found old socket");
@@ -30,9 +32,18 @@ class StreamChatSocketIoClient {
       IO.OptionBuilder()
           .setTransports(['websocket'])
           .disableAutoConnect()
-          .setAuth({
-            "api_key": config.apiKey,
-            "token": token,
+          // A token is spent on use: the first connect uses [token], every
+          // reconnect asks the host for a new one (config.tokenProvider).
+          .setAuthFn((callback) {
+            final first = _firstToken;
+            _firstToken = null;
+            (first != null
+                    ? Future.value(first)
+                    : (config.tokenProvider?.call() ?? Future.value(token)))
+                .then((t) => callback({"api_key": config.apiKey, "token": t}))
+                .catchError((Object e) {
+                  config.logger.e("[socket] token refresh failed", error: e);
+                });
           })
           .enableForceNew()
           .build(),
@@ -41,6 +52,11 @@ class StreamChatSocketIoClient {
       "StreamChatSocketIoClient initialized with socketBaseUrl: ${config.socketBaseUrl}",
     );
 
+    // The server forgets the joined channel with the old connection.
+    _socket!.onReconnect((_) {
+      final channelId = _joinedChannel;
+      if (channelId != null) joinChannel(channelId).catchError((_) {});
+    });
     _socket!.on('new-message', _handleNewMessage);
     _socket!.on('deleted-message', _handleDeletedMessages);
     _socket!.on('ping', (_) => config.logger.d("socket ping"));
@@ -84,6 +100,7 @@ class StreamChatSocketIoClient {
         "Failed to join channel `$channelId`: ${data['status_code']} ${data['message']}",
       );
     } else {
+      _joinedChannel = channelId;
       config.logger.d("Connected to channel `$channelId`");
     }
   }

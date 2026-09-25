@@ -27,6 +27,29 @@ class PackageChannelType extends ChannelType {
   Map<String, dynamic> toJson() => {'type': 'package', 'package_id': packageId};
 }
 
+/// A room the host backend opened for the signed-in member: which channel,
+/// who they are in it, and the single-use token for the first socket connect.
+class ChatSession {
+  final String channelId;
+  final String userId;
+  final String token;
+
+  const ChatSession({
+    required this.channelId,
+    required this.userId,
+    required this.token,
+  });
+}
+
+/// One person in a room, as the host knows them.
+class ChatMember {
+  final String id;
+  final String? name;
+  final String? role;
+
+  const ChatMember({required this.id, this.name, this.role});
+}
+
 class Message {
   final String id;
   final String sender;

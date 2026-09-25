@@ -26,7 +26,6 @@ dependencies:
   record: ^6.2.0
   video_player: ^2.11.0
   socket_io_client: ^3.1.6
-  loading_overlay: ^0.5.0
   rust: ^3.1.0
   video_thumbnail: ^0.5.6
   geolocator: ^14.0.2

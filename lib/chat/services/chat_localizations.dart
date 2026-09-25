@@ -26,6 +26,10 @@ class ChatLocalizations {
     return _provider;
   }
 
+  /// Any key of the package's texts (chat_strings.dart), e.g. `media`.
+  static String text(BuildContext context, String key) =>
+      _getString(key, context);
+
   static String _getString(String key, BuildContext context) =>
       _getProvider.getString(key, context);
   // Chat Theme Dialog

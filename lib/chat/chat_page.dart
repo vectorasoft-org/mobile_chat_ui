@@ -3,7 +3,6 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:convert';
 
-import 'package:loading_overlay/loading_overlay.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -23,6 +22,7 @@ import 'widgets/chat_input_section.dart';
 import 'widgets/audio_player_widget.dart';
 import 'pages/video_player_page.dart';
 import 'pages/chat_channel_info_page.dart';
+import 'pages/chat_shared_page.dart';
 import 'controllers/recording_controller.dart';
 import 'widgets/audio_player_controller.dart';
 import 'services/chat_reactive_adapter.dart';
@@ -157,30 +157,15 @@ class _ChatPageState extends State<ChatPage> {
 
   void _loadAndCacheUserInfo() {
     try {
-      final userDataJson = _chatConfig.storage.getString(
-        _chatConfig.userDataKey,
-      );
+      final code = _chatConfig.resolveUserId();
+      if (code != null) _chatService.setUserCode(code);
+      if (_chatConfig.session != null) return;
+
+      final userDataJson = _chatConfig.storage.getString(_chatConfig.userDataKey);
       if (userDataJson != null) {
         final userData = jsonDecode(userDataJson) as Map<String, dynamic>;
-
-        // Extract user code
-        String? code = userData[_chatConfig.userIdField]?.toString();
-        if (code == null) {
-          for (final fallbackField in _chatConfig.userIdFieldFallbacks) {
-            final fallbackValue = userData[fallbackField]?.toString();
-            if (fallbackValue != null) {
-              code = fallbackValue;
-              break;
-            }
-          }
-        }
-
-        // Extract other user data
         final String? fullName = userData['full_name']?.toString();
         final String? avatarUrl = userData['image_url']?.toString();
-
-        // Cache in service
-        if (code != null) _chatService.setUserCode(code);
         if (fullName != null) _chatService.setUserName(fullName);
         if (avatarUrl != null) _chatService.setUserAvatarUrl(avatarUrl);
       }
@@ -188,6 +173,19 @@ class _ChatPageState extends State<ChatPage> {
       _chatConfig.logger.e('Error loading user info: $e');
     }
   }
+
+  /// Media / Files / Members of this room (Telegram's profile page).
+  void _openShared(ChatSharedTab tab) => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ChatSharedPage(
+            channelId: _channelId!,
+            channelName: _channelName,
+            adapter: _rxdartAdapter,
+            config: _chatConfig,
+            initialTab: tab,
+          ),
+        ),
+      );
 
   void _openChannelInfoPage() async {
     final result = await Navigator.of(context).push<ChatTheme>(
@@ -230,14 +228,42 @@ class _ChatPageState extends State<ChatPage> {
           appBar: PreferredSize(
             preferredSize: const Size.fromHeight(60),
             child: AppBar(
-              title: Text(
-                _channelName,
-                style: const TextStyle(color: Colors.white),
+              titleSpacing: 0,
+              title: InkWell(
+                onTap: _channelId == null ? null : () => _openShared(ChatSharedTab.members),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _channelName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        ChatLocalizations.text(context, 'members'),
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
               ),
               backgroundColor: themeSnapshot.data?.primaryColor ?? Colors.blue,
               elevation: 0,
               iconTheme: const IconThemeData(color: Colors.white),
               actions: [
+                IconButton(
+                  tooltip: ChatLocalizations.text(context, 'media'),
+                  icon: const Icon(Icons.perm_media_outlined),
+                  onPressed: _channelId == null ? null : () => _openShared(ChatSharedTab.media),
+                ),
                 IconButton(
                   icon: const Icon(Icons.info_outlined),
                   onPressed: _openChannelInfoPage,
@@ -531,49 +557,13 @@ class _ChatViewState extends State<ChatView> {
   /// Load the current user's official code from storage
   /// Returns true if successfully loaded, false if not found
   bool _loadCurrentUserOfficialCode() {
-    try {
-      final userDataJson = _chatConfig.storage.getString(
-        _chatConfig.userDataKey,
-      );
-      if (userDataJson == null) {
-        _chatConfig.logger.e('No user data found in storage - critical error');
-        return false;
-      }
-
-      final userData = jsonDecode(userDataJson) as Map<String, dynamic>;
-
-      // Try primary field first
-      String? code = userData[_chatConfig.userIdField]?.toString();
-
-      // If primary field not found, try fallback fields
-      if (code == null) {
-        for (final fallbackField in _chatConfig.userIdFieldFallbacks) {
-          final fallbackValue = userData[fallbackField]?.toString();
-          if (fallbackValue != null) {
-            code = fallbackValue;
-            break;
-          }
-        }
-      }
-
-      // If we still don't have a code, this is a critical error
-      if (code == null) {
-        _chatConfig.logger.e(
-          'Unable to identify user - none of the identification fields found: '
-          '${_chatConfig.userIdField}, ${_chatConfig.userIdFieldFallbacks}',
-        );
-        return false;
-      }
-
-      _currentUserOfficialCode = code;
-      _chatConfig.logger.i(
-        'Loaded current user code: $_currentUserOfficialCode',
-      );
-      return true;
-    } catch (e) {
-      _chatConfig.logger.e('Error loading user data', error: e);
+    final code = _chatConfig.resolveUserId();
+    if (code == null) {
+      _chatConfig.logger.e('Unable to identify the user');
       return false;
     }
+    _currentUserOfficialCode = code;
+    return true;
   }
 
   /// Show undismissable error dialog when user cannot be identified
