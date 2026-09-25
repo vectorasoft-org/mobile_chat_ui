@@ -32,3 +32,15 @@ migrate_working_dir/
 
 # FVM Version Cache
 .fvm/
+# CLAUDE / AI TOOLING
+.claude/
+.claude.json
+.claude/settings.local.json
+CLAUDE.md
+CLAUDE.local.md
+.mcp.json
+private/tmp/
+**/claude-501/
+.aider*
+.cursor/
+.continue/
