@@ -39,7 +39,7 @@ class RealChatService extends ChatService {
       onNewMessage: _handleNewMessage,
       onDeletedMessages: _handleDeletedMessages,
     );
-    _selectedTheme = ChatTheme.houExpress();
+    _selectedTheme = config.theme;
     _channelName = 'Channel';
     _channelId = null;
     _userName = 'Unknown';
@@ -53,6 +53,15 @@ class RealChatService extends ChatService {
 
   @override
   Future<void> initialize() async {
+    // The host already opened the room and proved who this is.
+    final session = config.session;
+    if (session != null) {
+      _userCode = session.userId;
+      _channelId = session.channelId;
+      await _socketClient.initialize(token: session.token);
+      return;
+    }
+
     final response = await _httpClient.getSignedJwtToken(userId: _userCode);
     final token = response['data']!;
     await _socketClient.initialize(
@@ -64,6 +73,13 @@ class RealChatService extends ChatService {
       channelType: config.channelType,
     );
     config.logger.i('Channel id resolved: $_channelId');
+  }
+
+  /// The member's chat id, or throws - nothing can be sent anonymously.
+  String _requireUserId() {
+    final id = config.resolveUserId();
+    if (id == null) throw Exception('User not authenticated');
+    return id;
   }
 
   /// The channel id resolved after [initialize] creates the channel.
@@ -306,27 +322,9 @@ class RealChatService extends ChatService {
         'RealChatService.sendMessage called for channel: $channelId',
       );
 
-      // Get user ID from configured storage
-      final userDataJson = config.storage.getString(config.userDataKey);
+      final userId = _requireUserId();
 
-      if (userDataJson == null) {
-        config.logger.e('User data not found in storage');
-        throw Exception('User not authenticated');
-      }
-
-      final userData = jsonDecode(userDataJson) as Map<String, dynamic>;
-      config.logger.d('User data keys: ${userData.keys.toList()}');
-
-      final userId = userData[config.userIdField]?.toString();
-
-      if (userId == null) {
-        config.logger.e(
-          '${config.userIdField} not found in user data: $userData',
-        );
-        throw Exception('Invalid user data - ${config.userIdField} missing');
-      }
-
-      config.logger.i('Sending message with ${config.userIdField}: $userId');
+      config.logger.i('Sending message as $userId');
 
       // Create ghost message immediately with temporary ID (optimistic UI update)
       // This appears in the UI immediately with reduced opacity
@@ -421,21 +419,7 @@ class RealChatService extends ChatService {
         'RealChatService.sendImage called for channel: $channelId, image: ${imageFile.name}',
       );
 
-      // Get user ID from configured storage
-      final userDataJson = config.storage.getString(config.userDataKey);
-
-      if (userDataJson == null) {
-        config.logger.e('User data not found in storage');
-        throw Exception('User not authenticated');
-      }
-
-      final userData = jsonDecode(userDataJson) as Map<String, dynamic>;
-      final userId = userData[config.userIdField]?.toString();
-
-      if (userId == null) {
-        config.logger.e('${config.userIdField} not found in user data');
-        throw Exception('Invalid user data - ${config.userIdField} missing');
-      }
+      final userId = _requireUserId();
 
       config.logger.i('Uploading image with userId: $userId');
 
@@ -485,7 +469,7 @@ class RealChatService extends ChatService {
                 uploadResponse['data'] as Map<String, dynamic>? ??
                 uploadResponse;
             final imageUrl =
-                "${config.baseUrl}/chat/resource/${responseData['full_path']}";
+                config.resourceUrl(responseData['full_path']);
 
             config.logger.i('Image uploaded successfully. URL: $imageUrl');
 
@@ -559,21 +543,7 @@ class RealChatService extends ChatService {
         'RealChatService.sendVideo called for channel: $channelId, video: ${videoFile.name}',
       );
 
-      // Get user ID from configured storage
-      final userDataJson = config.storage.getString(config.userDataKey);
-
-      if (userDataJson == null) {
-        config.logger.e('User data not found in storage');
-        throw Exception('User not authenticated');
-      }
-
-      final userData = jsonDecode(userDataJson) as Map<String, dynamic>;
-      final userId = userData[config.userIdField]?.toString();
-
-      if (userId == null) {
-        config.logger.e('${config.userIdField} not found in user data');
-        throw Exception('Invalid user data - ${config.userIdField} missing');
-      }
+      final userId = _requireUserId();
 
       config.logger.i('Uploading video with userId: $userId');
 
@@ -645,7 +615,7 @@ class RealChatService extends ChatService {
                 uploadResponse['data'] as Map<String, dynamic>? ??
                 uploadResponse;
             final fileUrl =
-                "${config.baseUrl}/chat/resource/${responseData['full_path']}";
+                config.resourceUrl(responseData['full_path']);
 
             config.logger.i('Video uploaded successfully. URL: $fileUrl');
 
@@ -678,7 +648,7 @@ class RealChatService extends ChatService {
                         thumbResponse['data'] as Map<String, dynamic>? ??
                         thumbResponse;
                     final thumbUrl =
-                        "${config.baseUrl}/chat/resource/${thumbData['full_path']}";
+                        config.resourceUrl(thumbData['full_path']);
                     placeholderAttachment['thumb_url'] = thumbUrl;
                     config.logger.d(
                       'Added client-generated video thumbnail URL: $thumbUrl',
@@ -779,21 +749,7 @@ class RealChatService extends ChatService {
         'RealChatService.sendMedia called for channel: $channelId, media count: ${media.length}',
       );
 
-      // Get user ID from configured storage
-      final userDataJson = config.storage.getString(config.userDataKey);
-
-      if (userDataJson == null) {
-        config.logger.e('User data not found in storage');
-        throw Exception('User not authenticated');
-      }
-
-      final userData = jsonDecode(userDataJson) as Map<String, dynamic>;
-      final userId = userData[config.userIdField]?.toString();
-
-      if (userId == null) {
-        config.logger.e('${config.userIdField} not found in user data');
-        throw Exception('Invalid user data - ${config.userIdField} missing');
-      }
+      final userId = _requireUserId();
 
       config.logger.i(
         'Uploading ${media.length} media items with userId: $userId',
@@ -849,7 +805,7 @@ class RealChatService extends ChatService {
                       uploadResponse['data'] as Map<String, dynamic>? ??
                       uploadResponse;
                   final fileUrl =
-                      "${config.baseUrl}/chat/resource/${responseData['full_path']}";
+                      config.resourceUrl(responseData['full_path']);
                   attachment['asset_url'] = fileUrl;
 
                   // Prefer server-provided thumbnail, else upload the
@@ -871,7 +827,7 @@ class RealChatService extends ChatService {
                               thumbResponse['data'] as Map<String, dynamic>? ??
                               thumbResponse;
                           final thumbUrl =
-                              "${config.baseUrl}/chat/resource/${thumbData['full_path']}";
+                              config.resourceUrl(thumbData['full_path']);
                           attachment['thumb_url'] = thumbUrl;
                           return thumbResponse;
                         });
@@ -905,7 +861,7 @@ class RealChatService extends ChatService {
                       uploadResponse['data'] as Map<String, dynamic>? ??
                       uploadResponse;
                   final imageUrl =
-                      "${config.baseUrl}/chat/resource/${responseData['full_path']}";
+                      config.resourceUrl(responseData['full_path']);
                   attachment['image_url'] = imageUrl;
                   return uploadResponse;
                 }),
@@ -1001,21 +957,7 @@ class RealChatService extends ChatService {
         'RealChatService.sendFile called for channel: $channelId, file: ${file.name}',
       );
 
-      // Get user ID from configured storage
-      final userDataJson = config.storage.getString(config.userDataKey);
-
-      if (userDataJson == null) {
-        config.logger.e('User data not found in storage');
-        throw Exception('User not authenticated');
-      }
-
-      final userData = jsonDecode(userDataJson) as Map<String, dynamic>;
-      final userId = userData[config.userIdField]?.toString();
-
-      if (userId == null) {
-        config.logger.e('${config.userIdField} not found in user data');
-        throw Exception('Invalid user data - ${config.userIdField} missing');
-      }
+      final userId = _requireUserId();
 
       config.logger.i('Uploading file with userId: $userId');
 
@@ -1076,7 +1018,7 @@ class RealChatService extends ChatService {
                 uploadResponse['data'] as Map<String, dynamic>? ??
                 uploadResponse;
             final fileUrl =
-                "${config.baseUrl}/chat/resource/${responseData['full_path']}";
+                config.resourceUrl(responseData['full_path']);
             // final fileUrl = responseData['file'] as String?;
 
             config.logger.i('File uploaded successfully. URL: $fileUrl');
@@ -1161,21 +1103,7 @@ class RealChatService extends ChatService {
         'RealChatService.sendFiles called for channel: $channelId, file count: ${files.length}',
       );
 
-      // Get user ID from configured storage
-      final userDataJson = config.storage.getString(config.userDataKey);
-
-      if (userDataJson == null) {
-        config.logger.e('User data not found in storage');
-        throw Exception('User not authenticated');
-      }
-
-      final userData = jsonDecode(userDataJson) as Map<String, dynamic>;
-      final userId = userData[config.userIdField]?.toString();
-
-      if (userId == null) {
-        config.logger.e('${config.userIdField} not found in user data');
-        throw Exception('Invalid user data - ${config.userIdField} missing');
-      }
+      final userId = _requireUserId();
 
       config.logger.i('Uploading ${files.length} files with userId: $userId');
 
@@ -1219,7 +1147,7 @@ class RealChatService extends ChatService {
                     uploadResponse['data'] as Map<String, dynamic>? ??
                     uploadResponse;
                 final fileUrl =
-                    "${config.baseUrl}/chat/resource/${responseData['full_path']}";
+                    config.resourceUrl(responseData['full_path']);
                 attachment['asset_url'] = fileUrl;
                 return uploadResponse;
               }),
@@ -1347,21 +1275,7 @@ class RealChatService extends ChatService {
         'RealChatService.sendVoiceRecording called for channel: $channelId',
       );
 
-      // Get user ID from configured storage
-      final userDataJson = config.storage.getString(config.userDataKey);
-
-      if (userDataJson == null) {
-        config.logger.e('User data not found in storage');
-        throw Exception('User not authenticated');
-      }
-
-      final userData = jsonDecode(userDataJson) as Map<String, dynamic>;
-      final userId = userData[config.userIdField]?.toString();
-
-      if (userId == null) {
-        config.logger.e('${config.userIdField} not found in user data');
-        throw Exception('Invalid user data - ${config.userIdField} missing');
-      }
+      final userId = _requireUserId();
 
       config.logger.i('Uploading voice recording with userId: $userId');
 
@@ -1416,7 +1330,7 @@ class RealChatService extends ChatService {
                 uploadResponse['data'] as Map<String, dynamic>? ??
                 uploadResponse;
             final fileUrl =
-                "${config.baseUrl}/chat/resource/${responseData['full_path']}";
+                config.resourceUrl(responseData['full_path']);
             // final fileUrl = responseData['file'] as String?;
 
             config.logger.i(
@@ -1498,21 +1412,7 @@ class RealChatService extends ChatService {
         '(${stopwatch.elapsedMilliseconds}ms)',
       );
 
-      // Get user ID from configured storage
-      final userDataJson = config.storage.getString(config.userDataKey);
-
-      if (userDataJson == null) {
-        config.logger.e('User data not found in storage');
-        throw Exception('User not authenticated');
-      }
-
-      final userData = jsonDecode(userDataJson) as Map<String, dynamic>;
-      final userId = userData[config.userIdField]?.toString();
-
-      if (userId == null) {
-        config.logger.e('${config.userIdField} not found in user data');
-        throw Exception('Invalid user data - ${config.userIdField} missing');
-      }
+      final userId = _requireUserId();
 
       // Resolve the map preview thumbnail: upload it to the storage service
       // and use the resulting URL as `thumb_url`. If the confirmation dialog
@@ -1681,7 +1581,7 @@ class RealChatService extends ChatService {
       final responseData =
           uploadResponse['data'] as Map<String, dynamic>? ?? uploadResponse;
       final resourceUrl =
-          "${config.baseUrl}/chat/resource/${responseData['full_path']}";
+          config.resourceUrl(responseData['full_path']);
       config.logger.i(
         'LOCATION_THUMB uploaded, URL: $resourceUrl '
         '(${stopwatch.elapsedMilliseconds}ms total)',

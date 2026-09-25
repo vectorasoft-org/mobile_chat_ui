@@ -142,34 +142,36 @@ class ChatTheme {
   });
 
   /// Factory constructor for houExpress default theme (red)
-  factory ChatTheme.houExpress() {
-    const primaryRed = Color(0xFFEC1D27);
+  /// A whole theme from one brand colour - every accent follows [primary].
+  factory ChatTheme.brand(Color primary) {
     const lightGrey = Color(0xFFF0F0F0);
     return ChatTheme(
-      primaryColor: primaryRed,
+      primaryColor: primary,
       secondaryColor: lightGrey,
-      messageSentBackground: primaryRed,
+      messageSentBackground: primary,
       messageSentText: Colors.white,
       messageReceivedBackground: lightGrey,
       messageReceivedText: Colors.black87,
-      recordButtonBackground: primaryRed,
-      recordButtonIconColor: primaryRed,
-      recordDeleteZoneIcon: primaryRed,
-      audioPlayerSentBackground: primaryRed,
-      audioPlayerIconColor: primaryRed,
+      recordButtonBackground: primary,
+      recordButtonIconColor: primary,
+      recordDeleteZoneIcon: primary,
+      audioPlayerSentBackground: primary,
+      audioPlayerIconColor: primary,
       audioPlayerSentProgressBar: Colors.white,
-      audioPlayerReceivedProgressBar: const Color(0xFFEC1D27),
+      audioPlayerReceivedProgressBar: primary,
       audioPlayerSentTextColor: Colors.white,
       audioPlayerReceivedTextColor: Colors.black87,
-      inputBorderFocused: primaryRed,
-      buttonBackground: primaryRed,
-      buttonIcon: primaryRed,
-      errorColor: primaryRed,
+      inputBorderFocused: primary,
+      buttonBackground: primary,
+      buttonIcon: primary,
+      errorColor: const Color(0xFFD32F2F),
       recordLabelNearZone: const Color(0xFF999999),
       recordLabelFarZone: Colors.white,
-      videoSliderColor: const Color(0xFF0084FF),
+      videoSliderColor: primary,
     );
   }
+
+  factory ChatTheme.houExpress() => ChatTheme.brand(const Color(0xFFEC1D27));
 
   /// Factory constructor for a blue theme
   factory ChatTheme.blue() {

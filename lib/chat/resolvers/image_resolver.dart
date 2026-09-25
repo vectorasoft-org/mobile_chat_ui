@@ -40,7 +40,7 @@ class RealImageResolver implements AttachmentResolver {
     return Builder(
       builder: (context) {
         return GestureDetector(
-          onTap: () => _showImageViewer(context, message, imageUrl: imageUrl),
+          onTap: () => showImageViewer(context, message, imageUrl: imageUrl),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: SizedBox(
@@ -148,7 +148,7 @@ class RealImageResolver implements AttachmentResolver {
     return null;
   }
 
-  void _showImageViewer(
+  void showImageViewer(
     BuildContext context,
     Message message, {
     String? imageUrl,

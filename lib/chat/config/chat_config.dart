@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'chat_logger.dart';
 import '../storage/api/chat_storage_adapter.dart';
 import '../models.dart';
@@ -20,6 +22,25 @@ class ChatConfig {
   final ChannelType channelType;
 
   final String socketBaseUrl;
+
+  /// A room the host has ALREADY opened (DMS: open-channel). When set,
+  /// [channelType] is ignored: no /chat/sign-jwt, no /chat/create-channel,
+  /// and the member's id comes from here, not from [storage].
+  final ChatSession? session;
+
+  /// A fresh socket token for every reconnect - chat-service accepts each
+  /// token once. Without it a dropped socket stays down.
+  final Future<String?> Function()? tokenProvider;
+
+  /// Who is in the room, for the Members tab. The chat service does not
+  /// list members to end users, so only the host can answer.
+  final Future<List<ChatMember>> Function()? membersProvider;
+
+  /// The host's CURRENT request headers (`Authorization`, app version, ...),
+  /// read per request so a refreshed login token is picked up. Sent on every
+  /// call to [baseUrl] and every file fetched from it. Wins over
+  /// [httpClientApiKey].
+  final Map<String, String> Function()? requestHeaders;
 
   /// Theme Configuration
   final ChatTheme theme;
@@ -62,10 +83,30 @@ class ChatConfig {
   /// Returns `{'Authorization': 'Bearer <token>'}` when [httpClientApiKey] is
   /// set, otherwise an empty map so it can be spread into headers unconditionally.
   Map<String, String> httpAuthHeaders() {
+    final headers = requestHeaders?.call();
+    if (headers != null) return headers;
     final token = httpClientApiKey;
     if (token == null || token.isEmpty) return const {};
     return {'Authorization': 'Bearer $token'};
   }
+
+  /// The member's chat id: the host's session, else the app's stored user.
+  String? resolveUserId() {
+    final fromSession = session?.userId;
+    if (fromSession != null) return fromSession;
+    final json = storage.getString(userDataKey);
+    if (json == null) return null;
+    final userData = jsonDecode(json) as Map<String, dynamic>;
+    for (final field in [userIdField, ...userIdFieldFallbacks]) {
+      final value = userData[field]?.toString();
+      if (value != null) return value;
+    }
+    return null;
+  }
+
+  /// Where an uploaded object ([fullPath] from `/chat/resource`) is served.
+  /// Fetch it with [httpAuthHeaders].
+  String resourceUrl(String? fullPath) => '$baseUrl/chat/resource/$fullPath';
 
   const ChatConfig({
     required this.baseUrl,
@@ -73,6 +114,10 @@ class ChatConfig {
     this.httpClientApiKey,
     this.channelType = const SupportChannelType(),
     required this.socketBaseUrl,
+    this.session,
+    this.tokenProvider,
+    this.requestHeaders,
+    this.membersProvider,
     required this.theme,
     required this.logger,
     required this.storage,
@@ -100,6 +145,10 @@ class ChatConfig {
     String? httpClientApiKey,
     ChannelType? channelType,
     String? socketBaseUrl,
+    ChatSession? session,
+    Future<String?> Function()? tokenProvider,
+    Map<String, String> Function()? requestHeaders,
+    Future<List<ChatMember>> Function()? membersProvider,
     ChatTheme? theme,
     ChatLogger? logger,
     ChatStorageAdapter? storage,
@@ -114,6 +163,10 @@ class ChatConfig {
       httpClientApiKey: httpClientApiKey ?? this.httpClientApiKey,
       channelType: channelType ?? this.channelType,
       socketBaseUrl: socketBaseUrl ?? this.socketBaseUrl,
+      session: session ?? this.session,
+      tokenProvider: tokenProvider ?? this.tokenProvider,
+      requestHeaders: requestHeaders ?? this.requestHeaders,
+      membersProvider: membersProvider ?? this.membersProvider,
       theme: theme ?? this.theme,
       logger: logger ?? this.logger,
       storage: storage ?? this.storage,
@@ -142,6 +195,7 @@ class ChatConfig {
         'httpClientApiKey: ${redact(httpClientApiKey)}, '
         'channelType: ${channelType.runtimeType}, '
         'socketBaseUrl: $socketBaseUrl, '
+        'session: ${session?.channelId}, '
         'theme: ${theme.runtimeType}, '
         'logger: ${logger.runtimeType}, '
         'storage: ${storage.runtimeType}, '
