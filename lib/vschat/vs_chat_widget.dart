@@ -4,8 +4,11 @@ import 'vs_chat.dart';
 
 /// How a new chat is started from [VSChatWidget].
 enum VSChatMode {
-  /// "New chat" asks what the chat is about: the host's topics, then the
-  /// topic's prompt (if any), then the matching subject, then Yes/No.
+  /// "New chat" lists the topics the host offers this user (by role) that
+  /// are about nothing specific - General, "System issue"... A topic may ask
+  /// one optional question first; the answer opens the room as its first
+  /// message. A chat about a THING (a parcel, a payout) starts from that
+  /// thing's own chat icon ([VSChatButton]), which knows its id.
   topics,
 
   /// Click to chat: "New chat" opens [VSChatWidget.topic] straight away
@@ -62,7 +65,11 @@ class _VSChatWidgetState extends State<VSChatWidget> {
   Color get _primary => VSChat.options.theme.primaryColor;
 
   Future<void> _reload() async {
-    setState(() => _rooms = VSChat.conversations());
+    // A block, not an arrow: an arrow returns the assigned Future, and
+    // setState throws on a callback that returns a Future.
+    setState(() {
+      _rooms = VSChat.conversations();
+    });
     await _rooms;
   }
 
@@ -75,11 +82,21 @@ class _VSChatWidgetState extends State<VSChatWidget> {
         presentation: widget.presentation,
       );
     } else {
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => VSChatTopicsPage(presentation: widget.presentation),
-        ),
-      );
+      /* The host offers this user's topics - always the one everyone has
+         (General), plus any configured for their role. ONE topic is not a
+         choice, so it opens directly; a list appears only when there are two
+         or more to choose between. */
+      final topics = await VSChat.topics();
+      if (!mounted) return;
+      if (topics.length == 1) {
+        await VSChatTopicsView.open(context, topics.first, presentation: widget.presentation);
+      } else {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => VSChatTopicsPage(presentation: widget.presentation, topics: topics),
+          ),
+        );
+      }
     }
     if (mounted && widget.showConversations) _reload();
   }
@@ -153,7 +170,7 @@ class _VSChatWidgetState extends State<VSChatWidget> {
         child: TextField(
           onChanged: (v) => setState(() => _query = v.trim()),
           decoration: InputDecoration(
-            hintText: VSChat.t('find'),
+            hintText: VSChat.t('search'),
             prefixIcon: const Icon(Icons.search_rounded),
             filled: true,
             fillColor: Colors.white,
@@ -290,9 +307,12 @@ class VSChatButton extends StatelessWidget {
 
 /// "What is your chat about?" as a page.
 class VSChatTopicsPage extends StatelessWidget {
-  const VSChatTopicsPage({super.key, this.presentation});
+  const VSChatTopicsPage({super.key, this.presentation, this.topics});
 
   final VSChatPresentation? presentation;
+
+  /// Already fetched (by "New chat"), so the page does not ask twice.
+  final List<Map<String, dynamic>>? topics;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -303,23 +323,53 @@ class VSChatTopicsPage extends StatelessWidget {
           foregroundColor: Colors.white,
           elevation: 0,
         ),
-        body: VSChatTopicsView(presentation: presentation),
+        body: VSChatTopicsView(presentation: presentation, topics: topics),
       );
 }
 
-/// The host's topics for this user. A topic with a prompt asks for its
-/// subject first ([VSChatSubjectPage]); one without opens straight away.
+/// The host's topics for this user. One with a question asks it first
+/// ([VSChatDetailSheet], answer optional); one without opens straight away.
 class VSChatTopicsView extends StatefulWidget {
-  const VSChatTopicsView({super.key, this.presentation});
+  const VSChatTopicsView({super.key, this.presentation, this.topics});
 
   final VSChatPresentation? presentation;
+  final List<Map<String, dynamic>>? topics;
+
+  /// Open one of the host's topics: straight away, or after its one optional
+  /// question ([VSChatDetailSheet]). Shared by the list and by "New chat" when
+  /// there is only one topic to open.
+  static Future<void> open(
+    BuildContext context,
+    Map<String, dynamic> t, {
+    VSChatPresentation? presentation,
+  }) async {
+    final topic = t['topic'].toString();
+    final question = (t['detail_prompt'] ?? '').toString().trim();
+    if (question.isEmpty) {
+      return VSChat.start(context, topic: topic, presentation: presentation);
+    }
+    final detail = await VSChatDetailSheet.show(
+      context,
+      title: (t['name'] ?? topic).toString(),
+      question: question,
+    );
+    if (detail == null || !context.mounted) return; // dismissed
+    await VSChat.start(
+      context,
+      topic: topic,
+      detail: detail,
+      confirmed: true, // the sheet's "Start chat" was the deliberate tap
+      presentation: presentation,
+    );
+  }
 
   @override
   State<VSChatTopicsView> createState() => _VSChatTopicsViewState();
 }
 
 class _VSChatTopicsViewState extends State<VSChatTopicsView> {
-  late Future<List<Map<String, dynamic>>> _topics = VSChat.topics();
+  late Future<List<Map<String, dynamic>>> _topics =
+      widget.topics != null ? Future.value(widget.topics!) : VSChat.topics();
 
   @override
   Widget build(BuildContext context) {
@@ -327,7 +377,9 @@ class _VSChatTopicsViewState extends State<VSChatTopicsView> {
     return RefreshIndicator(
       color: primary,
       onRefresh: () async {
-        setState(() => _topics = VSChat.topics());
+        setState(() {
+          _topics = VSChat.topics(); // a block: an arrow would return the Future
+        });
         await _topics;
       },
       child: FutureBuilder<List<Map<String, dynamic>>>(
@@ -337,6 +389,10 @@ class _VSChatTopicsViewState extends State<VSChatTopicsView> {
             return const Center(child: CircularProgressIndicator());
           }
           final topics = snap.data ?? const [];
+          if (topics.length == 1) {
+            // One topic is not a choice (see VSChatWidget._newChat).
+            return _StartCard(onStart: () => _open(topics.first), color: primary);
+          }
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -362,211 +418,101 @@ class _VSChatTopicsViewState extends State<VSChatTopicsView> {
     );
   }
 
-  void _open(Map<String, dynamic> t) {
-    final prompt = t['prompt'];
-    if (prompt is Map) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => VSChatSubjectPage(
-            topic: t,
-            prompt: Map<String, dynamic>.from(prompt),
-            presentation: widget.presentation,
-          ),
-        ),
-      );
-    } else {
-      VSChat.start(context, topic: t['topic'].toString(), presentation: widget.presentation);
-    }
-  }
+  Future<void> _open(Map<String, dynamic> t) =>
+      VSChatTopicsView.open(context, t, presentation: widget.presentation);
 }
 
-/// Answers a topic's prompt and opens the chat about what it finds.
-///
-/// The prompt is the host's: `fields` (`{key, label, type: text|phone|date}`)
-/// and `any_of` groups of field keys - each group its own block, separated
-/// by "OR"; the first fully filled group is sent to find-subject.
-class VSChatSubjectPage extends StatefulWidget {
-  const VSChatSubjectPage({
-    super.key,
-    required this.topic,
-    required this.prompt,
-    this.presentation,
-  });
+/// The one optional question a topic may ask before its room opens - the
+/// host's text ("What happened?"). Resolves to the answer ('' when left
+/// blank), or null when dismissed.
+class VSChatDetailSheet extends StatefulWidget {
+  const VSChatDetailSheet({super.key, required this.title, required this.question});
 
-  final Map<String, dynamic> topic;
-  final Map<String, dynamic> prompt;
-  final VSChatPresentation? presentation;
+  final String title;
+  final String question;
+
+  static Future<String?> show(BuildContext context, {required String title, required String question}) =>
+      showModalBottomSheet<String>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        builder: (_) => VSChatDetailSheet(title: title, question: question),
+      );
 
   @override
-  State<VSChatSubjectPage> createState() => _VSChatSubjectPageState();
+  State<VSChatDetailSheet> createState() => _VSChatDetailSheetState();
 }
 
-class _VSChatSubjectPageState extends State<VSChatSubjectPage> {
-  final Map<String, TextEditingController> _ctl = {};
-  late final Map<String, Map<String, dynamic>> _fields = {
-    for (final f in (widget.prompt['fields'] as List? ?? const []).whereType<Map>())
-      f['key'].toString(): Map<String, dynamic>.from(f),
-  };
-  late final List<List<String>> _groups = [
-    for (final g in (widget.prompt['any_of'] as List? ?? const []).whereType<List>())
-      g.map((e) => e.toString()).toList(),
-  ];
-  List<Map<String, dynamic>>? _matches;
-  bool _busy = false;
-
-  String get _topicCode => widget.topic['topic'].toString();
-  Color get _primary => VSChat.options.theme.primaryColor;
+class _VSChatDetailSheetState extends State<VSChatDetailSheet> {
+  final _text = TextEditingController();
 
   @override
   void dispose() {
-    for (final c in _ctl.values) {
-      c.dispose();
-    }
+    _text.dispose();
     super.dispose();
   }
 
-  TextEditingController _c(String key) => _ctl.putIfAbsent(key, TextEditingController.new);
-
-  void _say(String msg) =>
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(msg)));
-
-  void _start(String subjectId) => VSChat.start(
-        context,
-        topic: _topicCode,
-        subjectId: subjectId,
-        presentation: widget.presentation,
-      );
-
   @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xFFF6F7F9),
-        appBar: AppBar(
-          title: Text((widget.topic['name'] ?? _topicCode).toString()),
-          backgroundColor: _primary,
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text(
-              VSChat.t('whichOne'),
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 14),
-            for (var i = 0; i < _groups.length; i++) ...[
-              if (i > 0) _or(),
-              Container(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(children: [for (final k in _groups[i]) _field(k)]),
-              ),
-            ],
-            const SizedBox(height: 20),
-            SizedBox(
-              height: 50,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: _primary,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                ),
-                onPressed: _busy ? null : _find,
-                icon: _busy
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Icon(Icons.search_rounded),
-                label: Text(VSChat.t('find')),
-              ),
-            ),
-            if (_matches != null && _matches!.length > 1) ...[
-              const SizedBox(height: 24),
-              Text(VSChat.t('pickOne'), style: const TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 10),
-              for (final m in _matches!)
-                _Card(
-                  icon: Icons.label_outline_rounded,
-                  color: _primary,
-                  title: (m['label'] ?? m['subject_id']).toString(),
-                  trailing: Icons.chat_bubble_outline_rounded,
-                  onTap: () => _start(m['subject_id'].toString()),
-                ),
-            ],
-          ],
-        ),
-      );
-
-  Widget _or() => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Row(children: [
-          const Expanded(child: Divider()),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Text(VSChat.t('or'), style: const TextStyle(color: Colors.black45)),
-          ),
-          const Expanded(child: Divider()),
-        ]),
-      );
-
-  Widget _field(String key) {
-    final type = (_fields[key]?['type'] ?? 'text').toString();
+  Widget build(BuildContext context) {
+    final accent = VSChat.options.theme.primaryColor;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: TextField(
-        controller: _c(key),
-        readOnly: type == 'date',
-        keyboardType: type == 'phone' ? TextInputType.phone : TextInputType.text,
-        decoration: InputDecoration(
-          labelText: VSChat.t('field_$key', _fields[key]?['label']?.toString() ?? key),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          suffixIcon: type == 'date' ? const Icon(Icons.calendar_today_outlined) : null,
-        ),
-        onTap: type == 'date' ? () => _pickDate(key) : null,
+      padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(color: const Color(0xFFD1D5DB), borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Text(widget.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
+          const SizedBox(height: 6),
+          Text(widget.question, style: const TextStyle(fontSize: 15, height: 1.4, color: Color(0xFF4B5563))),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _text,
+            autofocus: true,
+            minLines: 3,
+            maxLines: 6,
+            maxLength: 1000,
+            textInputAction: TextInputAction.newline,
+            decoration: InputDecoration(
+              hintText: VSChat.t('detailOptional'),
+              filled: true,
+              fillColor: const Color(0xFFF9FAFB),
+              counterText: '',
+              contentPadding: const EdgeInsets.all(14),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: accent, width: 1.5),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(VSChat.t('notifyNote'), style: const TextStyle(fontSize: 12.5, color: Color(0xFF9CA3AF))),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, _text.text.trim()),
+            style: FilledButton.styleFrom(
+              backgroundColor: accent,
+              minimumSize: const Size.fromHeight(52),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            child: Text(VSChat.t('startChat')),
+          ),
+        ],
       ),
     );
-  }
-
-  Future<void> _pickDate(String key) async {
-    final now = DateTime.now();
-    final d = await showDatePicker(
-      context: context,
-      initialDate: now,
-      firstDate: DateTime(now.year - 2),
-      lastDate: now,
-    );
-    if (d == null) return;
-    String two(int n) => n.toString().padLeft(2, '0');
-    _c(key).text = '${d.year}-${two(d.month)}-${two(d.day)}'; // ISO, as hosts expect
-  }
-
-  Future<void> _find() async {
-    final group = _groups
-        .where((g) => g.every((k) => _c(k).text.trim().isNotEmpty))
-        .firstOrNull;
-    if (group == null) return _say(VSChat.t('fillOneGroup'));
-
-    setState(() => _busy = true);
-    final found = await VSChat.findSubjects(
-      _topicCode,
-      {for (final k in group) k: _c(k).text.trim()},
-      onError: _say,
-    );
-    if (!mounted) return;
-    setState(() {
-      _busy = false;
-      _matches = found;
-    });
-    if (found == null) return;
-    if (found.isEmpty) {
-      _say(VSChat.t('noMatch'));
-    } else if (found.length == 1) {
-      _start(found.first['subject_id'].toString()); // one match: straight to Yes/No
-    }
   }
 }
 
@@ -605,14 +551,12 @@ class _Card extends StatelessWidget {
     required this.title,
     required this.onTap,
     this.subtitle,
-    this.trailing = Icons.chevron_right_rounded,
   });
 
   final IconData icon;
   final Color color;
   final String title;
   final String? subtitle;
-  final IconData trailing;
   final VoidCallback onTap;
 
   @override
@@ -647,7 +591,7 @@ class _Card extends StatelessWidget {
                     ],
                   ),
                 ),
-                Icon(trailing, color: color),
+                Icon(Icons.chevron_right_rounded, color: color),
               ]),
             ),
           ),

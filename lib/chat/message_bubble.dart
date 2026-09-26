@@ -324,7 +324,7 @@ class MessageBubble extends StatelessWidget {
                       vertical: 0,
                     ),
                     child: Text(
-                      message.sender,
+                      message.author ?? message.sender,
                       style: TextStyle(
                         fontSize: 12.sp,
                         color: theme.messageSenderName,

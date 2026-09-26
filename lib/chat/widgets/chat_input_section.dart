@@ -113,6 +113,7 @@ class _ChatInputSectionState extends State<ChatInputSection> {
   @override
   Widget build(BuildContext context) {
     return ChatInputBar(
+      attachmentsEnabled: widget.chatConfig.attachmentsEnabled,
       isRecording: _isRecording,
       hasPendingRecording: _pendingRecordingPath != null,
       hasFocus: _textInputFocusNode.hasFocus,

@@ -53,6 +53,11 @@ class ChatMember {
 class Message {
   final String id;
   final String sender;
+
+  /// The sender's display name, when the engine sent one (`author` on
+  /// history and live messages). Shown over the raw id - a public visitor
+  /// cannot list members to resolve names any other way.
+  final String? author;
   final String? text;
   final List<Map<String, dynamic>>? attachments;
   final bool isSending;
@@ -63,6 +68,7 @@ class Message {
   Message({
     required this.id,
     required this.sender,
+    this.author,
     this.text,
     this.attachments,
     this.isSending = false,
@@ -93,6 +99,7 @@ class Message {
     return Message(
       id: json['id'] ?? json['message_id'] ?? '',
       sender: userId,
+      author: (json['author'] ?? json['user']?['name']) as String?,
       text: messageText.isEmpty ? null : messageText,
       attachments: attachments,
       createdAt: json['created_at'],

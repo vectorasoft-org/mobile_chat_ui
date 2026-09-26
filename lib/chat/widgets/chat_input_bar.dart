@@ -27,6 +27,9 @@ class ChatInputBar extends StatelessWidget {
   final ChatLogger logger;
   final VoidCallback? onSendMessage;
 
+  /// Text only when false (see ChatConfig.attachmentsEnabled).
+  final bool attachmentsEnabled;
+
   const ChatInputBar({
     super.key,
     required this.isRecording,
@@ -48,12 +51,14 @@ class ChatInputBar extends StatelessWidget {
     required this.requestPermission,
     required this.logger,
     required this.onSendMessage,
+    this.attachmentsEnabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
+        if (attachmentsEnabled) ...[
         ChatInputActions(
           hasFocus: hasFocus,
           onPickFile: onPickFile,
@@ -65,8 +70,9 @@ class ChatInputBar extends StatelessWidget {
           hasFocus: hasFocus,
           onPressed: onPickImage,
         ),
+        ],
         Visibility(
-          visible: !hasFocus,
+          visible: !hasFocus && attachmentsEnabled,
           maintainSize: false,
           maintainAnimation: true,
           maintainState: true,
@@ -81,7 +87,7 @@ class ChatInputBar extends StatelessWidget {
             logger: logger,
           ),
         ),
-        ChatInputSpacing(hasFocus: hasFocus),
+        if (attachmentsEnabled) ChatInputSpacing(hasFocus: hasFocus) else SizedBox(width: 8.w),
         ChatInputContent(
           isRecording: isRecording,
           textController: textController,
