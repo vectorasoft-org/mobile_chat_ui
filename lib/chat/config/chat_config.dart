@@ -42,6 +42,10 @@ class ChatConfig {
   /// [httpClientApiKey].
   final Map<String, String> Function()? requestHeaders;
 
+  /// Photos, files, voice notes and location in the composer. Off for a
+  /// member who has no host to upload through (a public visitor): text only.
+  final bool attachmentsEnabled;
+
   /// Theme Configuration
   final ChatTheme theme;
 
@@ -118,6 +122,7 @@ class ChatConfig {
     this.tokenProvider,
     this.requestHeaders,
     this.membersProvider,
+    this.attachmentsEnabled = true,
     required this.theme,
     required this.logger,
     required this.storage,
@@ -149,6 +154,7 @@ class ChatConfig {
     Future<String?> Function()? tokenProvider,
     Map<String, String> Function()? requestHeaders,
     Future<List<ChatMember>> Function()? membersProvider,
+    bool? attachmentsEnabled,
     ChatTheme? theme,
     ChatLogger? logger,
     ChatStorageAdapter? storage,
@@ -167,6 +173,7 @@ class ChatConfig {
       tokenProvider: tokenProvider ?? this.tokenProvider,
       requestHeaders: requestHeaders ?? this.requestHeaders,
       membersProvider: membersProvider ?? this.membersProvider,
+      attachmentsEnabled: attachmentsEnabled ?? this.attachmentsEnabled,
       theme: theme ?? this.theme,
       logger: logger ?? this.logger,
       storage: storage ?? this.storage,

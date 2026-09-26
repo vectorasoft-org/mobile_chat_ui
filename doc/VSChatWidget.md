@@ -71,6 +71,12 @@ dependency_overrides:
 Platform permissions (microphone, camera, photos, location) are listed in the
 package [README](../README.md#platform-setup).
 
+**The room sizes itself with `flutter_screenutil`**, so the app must wrap its
+`MaterialApp` in `ScreenUtilInit(designSize: ..., builder: ...)`. Without it
+the room fails with `LateInitializationError: Field '_data' has not been
+initialized` the moment it opens. (The HOU apps already do this; a new host
+must too.)
+
 Import everything from one place:
 
 ```dart
@@ -128,7 +134,7 @@ lines in each app (`app_chat.dart` in hou-driver-v5 and hou-merchant-v5).
 
 | Mode | "New chat" does | Use for |
 |---|---|---|
-| `VSChatMode.topics` *(default)* | Topic list → the topic's prompt (if any) → match → Yes/No → room | Apps with several kinds of chat (a parcel, a payout, general) |
+| `VSChatMode.topics` *(default)* | The topics the host offers this user (by role, subject-less) → the topic's optional question → room | Apps with several subject-less chats (General, System issue, Forgot password) |
 | `VSChatMode.direct` | Yes/No → room for `topic` straight away | One-tap support line, helpdesk, AI assistant |
 
 ```dart
@@ -136,14 +142,19 @@ const VSChatWidget();                                          // drill-down
 const VSChatWidget(mode: VSChatMode.direct, topic: 'general'); // click to chat
 ```
 
-**Topic drill-down in detail.** The host's topic list says which topics need a
-subject. For example, "Chat about a package" asks for *the QR code* **or**
-*the receiver phone + pickup date*. The package renders those fields,
-asks the host to find matches, and handles each outcome:
+**Two ways in, split by what each knows.** A chat about a **thing** - a
+parcel, a payout, a promotion - starts from that thing's own chat icon
+(`VSChatButton` / `VSChat.start(topic:, subjectId:)`), which knows its id: one
+tap, the exact room. The main Chat page never asks the user to retype an id; it
+lists **the user's rooms** and, under New chat, the **subject-less** topics the
+host offers this user's roles. A topic may carry **one optional question**
+("What happened?") - asked in a small sheet, the answer (or nothing) becomes the
+room's first message, and the sheet's *Start chat* is the confirmation.
 
-- no match → a message;
-- one match → straight to Yes/No;
-- several → a pick list.
+**One topic is not a choice.** If the host offers the user a single topic (for
+example only General, which everyone has), *New chat* opens it directly - no
+list. The list appears only when there are two or more; the package decides by
+count alone, so it never needs to know which topic is the default.
 
 ### 4.2 What the widget shows
 
@@ -172,9 +183,15 @@ VSChat.start(context, topic: 'package', subjectId: id,
 
 ### 4.4 The Yes/No before a room opens
 
-Opening a room **notifies every member**, so `VSChat.start` asks first.
-Turn it off with `confirmStart: false`. Plug in your house dialog with
-`confirm:` (and your error dialog with `notify:`):
+Opening a **new** room notifies every member, so `VSChat.start` asks first.
+A room the user is **already in** opens straight away, with its history and
+without a question: nobody new is told. The host decides which
+(`POST /chat/channel-status` → `{channel_id, member}`), so the rule is the
+same for every subject-keyed topic - a parcel, a payout, whatever comes next -
+and the same on every surface (the web widget applies it too). A host without
+that route simply always asks. Turn the question off with
+`confirmStart: false`. Plug in your house dialog with `confirm:` (and your
+error dialog with `notify:`):
 
 ```dart
 confirm: (context, message) => showConfirmDialog(context: context, message: message, ...),
@@ -235,10 +252,8 @@ strings: const {
 },
 ```
 
-- **Topic prompt fields** are labelled by the host's `label`. To translate
-  them, add `field_<key>` overrides. DMS's are `field_qr_code`,
-  `field_receiver_phone`, `field_pickup_date` and `field_payment_date`.
-- Topic names come from the host, so adding a topic needs no app release.
+- Topic names and their optional questions come from the host, so adding a
+  topic needs no app release.
 
 Your own code can read any text with `VSChat.t('key')`.
 
@@ -254,10 +269,10 @@ user's login. Responses use the envelope `{status: 'OK', data}` or
 
 | Route | Request | `data` | Notes |
 |---|---|---|---|
-| `POST /chat/topics` | – | `[{topic, name, description?, prompt?}]` | `prompt = {fields:[{key,label,type:text\|phone\|date}], any_of:[[key,…],…]}` |
-| `POST /chat/find-subject` | `{topic, <field>: value…}` | `[{subject_id, label}]` | Only subjects this user may chat about |
-| `POST /chat/open-channel` | `{topic, subject_id?}` | **session** | Resolves members, notifies them |
+| `POST /chat/topics` | – | `[{topic, name, detail_prompt?}]` | The subject-less topics offered to this user's roles; `detail_prompt` = the optional question |
+| `POST /chat/open-channel` | `{topic, subject_id?, detail?}` | **session** | Resolves members, notifies the ones new to the room; `detail` is posted as the user's first message and quoted in the alert (and then notifies the whole room) |
 | `POST /chat/open-conversation` | `{channel_id}` | **session** | Member-only; also used for every reconnect token |
+| `POST /chat/channel-status` | `{topic, subject_id?}` | `{channel_id, member}` | Asked before `open-channel`: `member: true` → the room opens with no Yes/No (nobody new is told). *Optional*: without it the question is always asked |
 | `POST /chat/conversations` | – | `[{channel_id, name, channel_type, context, last_opened_at}]` | `context` values become the row's subtitle |
 | `POST /chat/members` | `{channel_id}` | `[{user_code, user_class}]` or `[{official_code, name, role}]` | Member-only |
 | `POST /chat/resource` | multipart `{channel_id, file}` | `{object:{full_path,…}, file}` | Stores as the **caller**; never trusts a client user id |
@@ -314,5 +329,79 @@ then signs a token and creates the channel itself. `ChatConfig.session`,
 | Room opens, no history, no live messages | The socket was refused: the token was already spent, or `base_url`/`api_key` is wrong. Check the host's session |
 | Images/voice notes do not load | `GET /chat/resource/{path}` refused. Check the user is a member, and that `requestHeaders` carries everything your API middleware needs (e.g. `X-App-Version`) |
 | "Could not open the chat" | The host returned an error; its `error_message` is shown as is |
+| Yes/No is asked again for a room the user is already in | The host has no `/chat/channel-status` route (or it errors), so the widget cannot tell a reopen from a first open and asks to be safe |
 | Members tab empty | The host has no `/chat/members` route and the session carried no `members` |
 | Location shows a placeholder | The host has no `/chat/location/get-thumbnail` |
+
+---
+
+## 12. Visitor mode: a public app with no backend
+
+"Chat with us" in an app (or a partner's app) that has **no backend of its
+own**. The package talks to chat-service directly, with the app's
+**publishable key** - a key that is safe to ship, because it opens only the
+visitor routes. Who answers is the chat owner's business: chat-service tells
+their backend (DMS) who wrote, and that backend seats its Customer Service by
+its own configuration. The app needs none of that.
+
+```dart
+final prefs = await SharedPreferences.getInstance();
+VSChat.init(VSChatOptions.visitor(
+  baseUrl: 'https://chat.example.com',      // chat-service
+  key: 'pk_…',                              // from DMS: Chat Topics -> Website Chat
+  storage: SharedPreferencesAdapter(prefs), // REQUIRED in practice: see below
+  theme: ChatTheme.brand(const Color(0xFFEC1D27)),
+));
+
+const VSChatWidget();                        // the Chat page, as always
+```
+
+**What the visitor sees.** *New chat* shows the topic buttons the chat owner
+configured (or none: then it goes straight to the default topic), then one
+question - *How can we help?* - whose answer is the visitor's first message.
+That *Start chat* is the deliberate start: no room exists, and nobody is
+alerted, until it is tapped. There is no Yes/No. The visitor's rooms, one per
+topic, are the conversation list. The composer is **text only**: a visitor
+has no host to upload through, so photos, files, voice and location are
+hidden (`ChatConfig.attachmentsEnabled`). The Members tab is empty.
+
+**The widget is passive about identity.** It never asks for a name, phone or
+email. Your app decides whether, when and what to ask - a form before the
+chat, a sign-in, a checkout - and hands it over:
+
+```dart
+await VSChat.identify(name: 'Dara', phone: '012 345 678');   // or email:
+```
+
+Any time: before the first chat (kept and sent with it) or during one. The
+responders then see *"Customer Inquiry · Dara (012 345 678)"* instead of
+*"Website visitor"*. These are labels, never identity: they open nothing that
+belongs to anyone else.
+
+**The visitor is the id + secret in `storage`.** chat-service issues them
+once, on the first chat, and every later call proves them. A `MemoryStorage`
+forgets them on restart, which makes every launch a new visitor - so give
+visitor mode a persistent adapter. A wiped app is a new visitor by design.
+`VSChat.visitorId` reads the id; `VSChat.forgetVisitor()` starts over.
+
+| Call in visitor mode | Does |
+|---|---|
+| `VSChat.topics()` | `GET /visitor/config`: the configured topic buttons, or the default topic |
+| `VSChat.start(context, topic:, detail:)` | `POST /visitor/start` (first time) or `/resume` with `topic`: the room for that topic, created on first use; `detail` is the first message |
+| `VSChat.conversations()` | `POST /visitor/resume`: the visitor's rooms |
+| `VSChat.reopen(context, channelId)` | the room's topic is in its id (`visitor_<id>_<topic>`) → `/resume` |
+| reconnect token | `/resume` with the room's topic |
+| `VSChat.identify(...)` | `POST /visitor/identify` |
+
+Errors read as chat-service returns them. A visitor chat-service no longer
+knows (its record gone, key rotated away) is silently started over as a new
+one. Rate limits apply per device address (starts: 5 a minute).
+
+Known limit: a visitor's room shows the responders by chat id (`admin-2748`),
+because chat-service lists no members to end users and does not yet send the
+author's display name with messages.
+
+The example app in `example/` is exactly this: run it with
+`--dart-define=CHAT_BASE=… --dart-define=CHAT_KEY=pk_…`. Against a local
+chat-service the app's visitor settings need *Allow mobile apps* (a phone
+sends no `Origin`).
