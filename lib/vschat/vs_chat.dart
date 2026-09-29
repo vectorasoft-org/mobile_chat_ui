@@ -16,6 +16,7 @@ import '../chat/services/chat_service.dart';
 import '../chat/services/default_chat_localization_provider.dart';
 import '../chat/services/real_chat_service.dart';
 import '../chat/storage/api/chat_storage_adapter.dart';
+import 'vs_chat_inbox.dart';
 
 /// How a room is shown.
 enum VSChatPresentation {
@@ -184,17 +185,24 @@ class VSChat {
     if (!context.mounted) return;
 
     final room = _Room(config: config);
-    if ((presentation ?? o.presentation) == VSChatPresentation.sheet) {
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        backgroundColor: Colors.transparent,
-        enableDrag: false, // the frame's handle does it, without fighting the list
-        builder: (_) => _SheetFrame(initial: o.sheetInitialSize, child: room),
-      );
-    } else {
-      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => room));
+    // The room on screen reads itself: its unread zeroes now, and messages
+    // arriving while it is open mark read instead of counting.
+    VSChatInbox.watching(channelId);
+    try {
+      if ((presentation ?? o.presentation) == VSChatPresentation.sheet) {
+        await showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          backgroundColor: Colors.transparent,
+          enableDrag: false, // the frame's handle does it, without fighting the list
+          builder: (_) => _SheetFrame(initial: o.sheetInitialSize, child: room),
+        );
+      } else {
+        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => room));
+      }
+    } finally {
+      VSChatInbox.watching(null);
     }
   }
 
@@ -470,6 +478,8 @@ class VSChatOptions {
     this.confirmStart = true,
     this.confirm,
     this.notify,
+    this.alerts = const VSChatAlerts(),
+    this.overlayContext,
   })  : visitor = null,
         theme = theme ?? ChatTheme.houExpress(),
         language = language ?? (() => 'en'),
@@ -491,6 +501,8 @@ class VSChatOptions {
     this.presentation = VSChatPresentation.page,
     this.sheetInitialSize = 0.6,
     this.notify,
+    this.alerts = const VSChatAlerts(),
+    this.overlayContext,
   })  : visitor = VSChatVisitor(baseUrl: baseUrl.replaceAll(RegExp(r'/+$'), ''), key: key),
         api = _visitorApi(baseUrl.replaceAll(RegExp(r'/+$'), '')),
         authorization = null,
@@ -550,6 +562,57 @@ class VSChatOptions {
 
   /// The host's own error dialog/snackbar.
   final Future<void> Function(BuildContext context, String message)? notify;
+
+  /// How an arriving message announces itself. See [VSChatAlerts].
+  final VSChatAlerts alerts;
+
+  /// Where the in-app banner ([VSChatAlerts.toast]) is inserted. The app hands
+  /// back a context that owns an [Overlay] and outlives any one screen - with
+  /// GetX that is `() => Get.overlayContext`, otherwise a navigator key's
+  /// `currentContext`. Null (the default) disables only the banner: the pulse,
+  /// sound and haptic still fire, and [VSChatInbox.lastAlert] still emits, so a
+  /// host can render its own.
+  final BuildContext? Function()? overlayContext;
+}
+
+/// Real-time attention when a message lands for a channel that is NOT on
+/// screen. Every layer is driven by the same `unread-changed` event as the
+/// unread badge, and each can be turned off on its own.
+///
+/// The quiet default is [pulse] alone; [VSChatOptions] enables all of them,
+/// matching the web widget's `cfg.alerts`.
+class VSChatAlerts {
+  const VSChatAlerts({
+    this.pulse = true,
+    this.toast = true,
+    this.sound = true,
+    this.haptic = true,
+    this.toastDuration = const Duration(seconds: 6),
+  });
+
+  /// Everything off - the count still updates, it just never announces itself.
+  const VSChatAlerts.silent()
+      : pulse = false,
+        toast = false,
+        sound = false,
+        haptic = false,
+        toastDuration = const Duration(seconds: 6);
+
+  /// [VSChatUnreadBadge] pops when the count goes up.
+  final bool pulse;
+
+  /// A tappable banner (sender + preview) over whatever is on screen.
+  /// Needs [VSChatOptions.overlayContext].
+  final bool toast;
+
+  /// A short system alert tone.
+  final bool sound;
+
+  /// A light vibration.
+  final bool haptic;
+
+  /// How long the banner stays before it slides away.
+  final Duration toastDuration;
 }
 
 /// The host API's routes, relative to [VSChatOptions.api]'s base URL.
@@ -561,11 +624,17 @@ class VSChatEndpoints {
     this.channelStatus = '/chat/channel-status',
     this.conversations = '/chat/conversations',
     this.members = '/chat/members',
+    this.token = '/chat/token',
   });
 
   final String topics;
   final String openChannel;
   final String openConversation;
+
+  /// `{}` -> `{base_url, api_key, user_id, token}`: the caller's own inbox
+  /// credentials, no channel involved - [VSChatInbox]'s socket connects with
+  /// these at app start and on every reconnect.
+  final String token;
 
   /// `{topic, subject_id?}` -> `{channel_id, member}`: is the user already in
   /// the room [start] would open? Decides whether Yes/No is asked at all.
