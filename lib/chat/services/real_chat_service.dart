@@ -38,6 +38,7 @@ class RealChatService extends ChatService {
       config: config,
       onNewMessage: _handleNewMessage,
       onDeletedMessages: _handleDeletedMessages,
+      onReconnected: _resyncAfterReconnect,
     );
     _selectedTheme = config.theme;
     _channelName = 'Channel';
@@ -189,6 +190,25 @@ class RealChatService extends ChatService {
       _messagesCache.add(message);
       _notifyMessagesChanged();
       config.logger.d("New message arrived: ${message.id}");
+    }
+  }
+
+  /// Messages sent while the socket was down are gone from the live feed:
+  /// pull the newest page after every reconnect and append what the cache
+  /// is missing (the gap is always at the new end).
+  Future<void> _resyncAfterReconnect() async {
+    try {
+      final latest = await _socketClient.getMessages(limit: 20);
+      var changed = false;
+      for (final m in latest) {
+        if (_messagesCache.every((x) => x.id != m.id)) {
+          _messagesCache.add(m);
+          changed = true;
+        }
+      }
+      if (changed) _notifyMessagesChanged();
+    } catch (e) {
+      config.logger.w('[socket] resync after reconnect failed: $e');
     }
   }
 

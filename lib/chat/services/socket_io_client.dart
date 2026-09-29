@@ -12,10 +12,15 @@ class StreamChatSocketIoClient {
   void Function(Message)? onNewMessage;
   void Function(List<String>)? onDeletedMessages;
 
+  /// After a reconnect has re-joined the channel: messages sent while the
+  /// socket was down never replay on their own, so the service resyncs.
+  void Function()? onReconnected;
+
   StreamChatSocketIoClient({
     required this.config,
     this.onNewMessage,
     this.onDeletedMessages,
+    this.onReconnected,
   });
 
   Future<void> initialize({
@@ -55,10 +60,16 @@ class StreamChatSocketIoClient {
     // The server forgets the joined channel with the old connection.
     _socket!.onReconnect((_) {
       final channelId = _joinedChannel;
-      if (channelId != null) joinChannel(channelId).catchError((_) {});
+      if (channelId != null) {
+        joinChannel(channelId)
+            .then((_) => onReconnected?.call())
+            .catchError((_) {});
+      }
     });
     _socket!.on('new-message', _handleNewMessage);
-    _socket!.on('deleted-message', _handleDeletedMessages);
+    // Plural: the server emits 'deleted-messages' (one event, many ids).
+    // The singular name meant mobile never saw a delete.
+    _socket!.on('deleted-messages', _handleDeletedMessages);
     _socket!.on('ping', (_) => config.logger.d("socket ping"));
     _socket!.on('pong', (_) => config.logger.d("socket pong"));
     _socket!.connect();
@@ -75,7 +86,12 @@ class StreamChatSocketIoClient {
   }
 
   void _handleDeletedMessages(dynamic ackRes) {
-    onDeletedMessages?.call(ackRes['message_ids'] ?? []);
+    // The payload's List is List<dynamic>; a raw pass-through would throw
+    // on the List<String> callback the first time a delete ever arrived.
+    final ids = ackRes is Map ? ackRes['message_ids'] : null;
+    onDeletedMessages?.call([
+      for (final x in (ids is List ? ids : const [])) x.toString(),
+    ]);
   }
 
   Future<void> joinChannel(String channelId) async {

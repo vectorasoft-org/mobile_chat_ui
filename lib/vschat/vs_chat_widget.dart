@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'vs_chat.dart';
+import 'vs_chat_inbox.dart';
 
 /// How a new chat is started from [VSChatWidget].
 enum VSChatMode {
@@ -63,6 +64,13 @@ class _VSChatWidgetState extends State<VSChatWidget> {
   String _query = '';
 
   Color get _primary => VSChat.options.theme.primaryColor;
+
+  @override
+  void initState() {
+    super.initState();
+    // Idempotent: covers a user whose chat identity appeared after app start.
+    VSChatInbox.start();
+  }
 
   Future<void> _reload() async {
     // A block, not an arrow: an arrow returns the assigned Future, and
@@ -186,6 +194,7 @@ class _VSChatWidgetState extends State<VSChatWidget> {
   Widget _roomTile(Map<String, dynamic> r) {
     final name = (r['name'] ?? r['channel_id']).toString();
     final sub = _contextLine(r['context']);
+    final channelId = r['channel_id'].toString();
     return Material(
       color: Colors.white,
       child: InkWell(
@@ -226,9 +235,35 @@ class _VSChatWidgetState extends State<VSChatWidget> {
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                _when(r['last_opened_at']?.toString()),
-                style: const TextStyle(color: Colors.black45, fontSize: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _when(r['last_opened_at']?.toString()),
+                    style: const TextStyle(color: Colors.black45, fontSize: 12),
+                  ),
+                  // Live unread for THIS room (zeroes when any session reads it).
+                  ValueListenableBuilder<Map<String, int>>(
+                    valueListenable: VSChatInbox.counts,
+                    builder: (_, counts, child) {
+                      final n = counts[channelId] ?? 0;
+                      if (n == 0) return const SizedBox(height: 4);
+                      return Container(
+                        margin: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _primary,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          n > 99 ? '99+' : '$n',
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
             ],
           ),
