@@ -112,6 +112,63 @@ class ChatConfig {
   /// Fetch it with [httpAuthHeaders].
   String resourceUrl(String? fullPath) => '$baseUrl/chat/resource/$fullPath';
 
+  /// A message's attachment URL was minted by the SENDER's surface - another
+  /// app class's API path, or the web widget's storage URL - and is stored on
+  /// the message verbatim, so it is not fetchable from this app's auth realm.
+  /// The surface-neutral locator is the object's storage full_path
+  /// (`<subs_id>/<channel>/<key>`), which every known mint carries after a
+  /// `/resource/` segment; [object] (the engine's attachment object block) may
+  /// carry it as `full_path`. Rebase it onto THIS app's own member-gated
+  /// resource route; an unknown shape passes through untouched. Idempotent on
+  /// our own URLs.
+  String? rebaseAttachmentUrl(String? url, [Map<String, dynamic>? object]) {
+    if (url == null || url.isEmpty || url.startsWith('data:')) {
+      final fullPath = object?['full_path']?.toString();
+      if (fullPath == null || fullPath.isEmpty) return url;
+      return resourceUrl(_stripSlashes(fullPath));
+    }
+    const marker = '/resource/';
+    final i = url.indexOf(marker);
+    if (i >= 0) {
+      var tail = url.substring(i + marker.length);
+      final q = tail.indexOf('?');
+      if (q >= 0) tail = tail.substring(0, q);
+      if (tail.isNotEmpty) return resourceUrl(_stripSlashes(tail));
+    }
+    final fullPath = object?['full_path']?.toString();
+    if (fullPath != null && fullPath.isNotEmpty) {
+      return resourceUrl(_stripSlashes(fullPath));
+    }
+    return url;
+  }
+
+  static String _stripSlashes(String s) =>
+      s.replaceAll(RegExp(r'^/+|/+$'), '');
+
+  /// Rebase every URL an incoming message's attachments carry (in place).
+  /// The `object.full_path` fallback only applies to the attachment's PRIMARY
+  /// url key - a video's thumb is a different object than its asset.
+  void rebaseAttachments(List<Map<String, dynamic>>? attachments) {
+    if (attachments == null) return;
+    for (final a in attachments) {
+      final object = a['object'] is Map
+          ? (a['object'] as Map).cast<String, dynamic>()
+          : null;
+      final type = a['type']?.toString();
+      final primaryKey = type == 'image'
+          ? 'image_url'
+          : type == 'location'
+              ? 'thumb_url'
+              : 'asset_url';
+      for (final k in const ['image_url', 'asset_url', 'thumb_url']) {
+        final v = a[k]?.toString();
+        if (v == null && k != primaryKey) continue;
+        final r = rebaseAttachmentUrl(v, k == primaryKey ? object : null);
+        if (r != null && r != v) a[k] = r;
+      }
+    }
+  }
+
   const ChatConfig({
     required this.baseUrl,
     required this.apiKey,
