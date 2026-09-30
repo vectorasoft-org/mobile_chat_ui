@@ -276,7 +276,7 @@ user's login. Responses use the envelope `{status: 'OK', data}` or
 | `POST /chat/conversations` | – | `[{channel_id, name, channel_type, context, last_opened_at}]` | `context` values become the row's subtitle |
 | `POST /chat/members` | `{channel_id}` | `[{user_code, user_class}]` or `[{official_code, name, role}]` | Member-only |
 | `POST /chat/resource` | multipart `{channel_id, file}` | `{object:{full_path,…}, file}` | Stores as the **caller**; never trusts a client user id |
-| `GET /chat/resource/{full_path}` | – | file bytes | Member-only proxy (uploads need the storage secret) |
+| `GET /chat/resource/{full_path}` | – | file bytes | Member-only proxy (uploads need the storage secret). This route serves EVERY attachment the user views, whichever surface sent it: a message's stored URL was minted by the *sender's* surface (another app class, the web widget), so on ingest the widget rebases each attachment onto this route via the storage `full_path` (the URL tail after `/resource/`, or `object.full_path`) — `ChatConfig.rebaseAttachments` |
 | `GET /chat/location/get-thumbnail?lat&lon` | – | PNG | *Optional.* Without it, location messages show a placeholder |
 
 **Session** = `{base_url, api_key, channel_id, user_id, token, name?, members?}`.

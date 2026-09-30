@@ -82,6 +82,9 @@ class StreamChatSocketIoClient {
 
   void _handleNewMessage(dynamic ackRes) {
     final newMessage = Message.fromStreamChatJson(ackRes);
+    // Attachment URLs are minted by the sender's surface; make them
+    // fetchable from THIS app before anything renders or caches them.
+    config.rebaseAttachments(newMessage.attachments);
     onNewMessage?.call(newMessage);
   }
 
@@ -141,6 +144,11 @@ class StreamChatSocketIoClient {
       final messages = messagesJson
           .map((js) => Message.fromStreamChatJson(js))
           .toList();
+      // History rows carry whatever URL the sender's surface minted -
+      // rebase each onto this app's own resource route.
+      for (final m in messages) {
+        config.rebaseAttachments(m.attachments);
+      }
       return messages;
     }
   }
