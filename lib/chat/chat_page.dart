@@ -10,6 +10,7 @@ import 'package:open_file/open_file.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -161,7 +162,9 @@ class _ChatPageState extends State<ChatPage> {
       if (code != null) _chatService.setUserCode(code);
       if (_chatConfig.session != null) return;
 
-      final userDataJson = _chatConfig.storage.getString(_chatConfig.userDataKey);
+      final userDataJson = _chatConfig.storage.getString(
+        _chatConfig.userDataKey,
+      );
       if (userDataJson != null) {
         final userData = jsonDecode(userDataJson) as Map<String, dynamic>;
         final String? fullName = userData['full_name']?.toString();
@@ -176,16 +179,16 @@ class _ChatPageState extends State<ChatPage> {
 
   /// Media / Files / Members of this room (Telegram's profile page).
   void _openShared(ChatSharedTab tab) => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ChatSharedPage(
-            channelId: _channelId!,
-            channelName: _channelName,
-            adapter: _rxdartAdapter,
-            config: _chatConfig,
-            initialTab: tab,
-          ),
-        ),
-      );
+    MaterialPageRoute(
+      builder: (_) => ChatSharedPage(
+        channelId: _channelId!,
+        channelName: _channelName,
+        adapter: _rxdartAdapter,
+        config: _chatConfig,
+        initialTab: tab,
+      ),
+    ),
+  );
 
   void _openChannelInfoPage() async {
     final result = await Navigator.of(context).push<ChatTheme>(
@@ -230,7 +233,9 @@ class _ChatPageState extends State<ChatPage> {
             child: AppBar(
               titleSpacing: 0,
               title: InkWell(
-                onTap: _channelId == null ? null : () => _openShared(ChatSharedTab.members),
+                onTap: _channelId == null
+                    ? null
+                    : () => _openShared(ChatSharedTab.members),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Column(
@@ -249,7 +254,10 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                       Text(
                         ChatLocalizations.text(context, 'members'),
-                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ),
@@ -262,7 +270,9 @@ class _ChatPageState extends State<ChatPage> {
                 IconButton(
                   tooltip: ChatLocalizations.text(context, 'media'),
                   icon: const Icon(Icons.perm_media_outlined),
-                  onPressed: _channelId == null ? null : () => _openShared(ChatSharedTab.media),
+                  onPressed: _channelId == null
+                      ? null
+                      : () => _openShared(ChatSharedTab.media),
                 ),
                 IconButton(
                   icon: const Icon(Icons.info_outlined),
@@ -1451,11 +1461,24 @@ class _ChatViewState extends State<ChatView> {
   }
 
   /// Open the given coordinates in the platform's maps application.
+  ///
+  /// Apple platforms (iOS, macOS) open the location in Apple Maps, while all
+  /// other platforms fall back to Google Maps.
   Future<void> _openLocationInMaps(double latitude, double longitude) async {
     try {
-      final uri = Uri.parse(
-        'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude',
-      );
+      final Uri uri;
+      if (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS) {
+        // Apple Maps (also works on macOS via the maps: scheme).
+        uri = Uri.parse(
+          'https://maps.apple.com/?daddr=$latitude,$longitude',
+        );
+      } else {
+        // Google Maps for every other platform.
+        uri = Uri.parse(
+          'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude',
+        );
+      }
       final launched = await launchUrl(
         uri,
         mode: LaunchMode.externalApplication,
