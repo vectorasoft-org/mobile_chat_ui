@@ -187,6 +187,16 @@ class _ChatSharedPageState extends State<ChatSharedPage> {
     );
   }
 
+  /// Save one shared photo/video to the device - the same path the Files tab
+  /// uses, so one download implementation serves both tabs.
+  Future<void> _download(_Item item) async {
+    await _downloads.downloadFileWithSystemFallback(
+      item.m,
+      item.a,
+      item.a['type'] as String? ?? (item.isVideo ? 'video' : 'image'),
+    );
+  }
+
   Widget _mediaTile(_Item item) {
     final thumb = item.isVideo ? item.a['thumb_url'] as String? : item.url;
     return GestureDetector(
@@ -226,6 +236,29 @@ class _ChatSharedPageState extends State<ChatSharedPage> {
                 child: Icon(Icons.play_arrow_rounded, color: Colors.white),
               ),
             ),
+          // Save, without having to open the photo first. Tapping the tile
+          // still opens it full screen; this is the second thing people want
+          // from a media grid, and it was only reachable inside the viewer.
+          Positioned(
+            top: 4,
+            right: 4,
+            child: GestureDetector(
+              onTap: () => _download(item),
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                padding: const EdgeInsets.all(5),
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.download_rounded,
+                  size: 16,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -269,6 +302,15 @@ class _ChatSharedPageState extends State<ChatSharedPage> {
     );
   }
 
+  /// The class a chat code is keyed by ("admin-2748" -> "Admin"), as a last
+  /// resort when the host sent no name or role for that member.
+  static String _classOf(String code) {
+    final i = code.indexOf('-');
+    final cls = i > 0 ? code.substring(0, i) : code;
+    if (cls.isEmpty) return code;
+    return cls[0].toUpperCase() + cls.substring(1);
+  }
+
   Widget _membersTab() {
     final primary = widget.adapter.currentTheme.primaryColor;
     final me = _service.getCachedUserCode();
@@ -288,14 +330,23 @@ class _ChatSharedPageState extends State<ChatSharedPage> {
           separatorBuilder: (_, _) => const Divider(height: 1, indent: 72),
           itemBuilder: (context, i) {
             final m = list[i];
-            final label = (m.name?.isNotEmpty ?? false) ? m.name! : m.id;
+            // The person first: the chat name is what a reader recognises,
+            // with their role underneath. The raw code names nobody, so it
+            // only surfaces when there is nothing better to say.
+            final cls = _classOf(m.id);
+            final label = (m.name?.isNotEmpty ?? false) ? m.name! : cls;
+            var sub = (m.role?.isNotEmpty ?? false) ? m.role! : cls;
+            if (sub == label) sub = m.id;
             return ListTile(
               tileColor: Colors.white,
               leading: _Avatar(label: label, color: primary),
               title: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: m.role == null
-                  ? null
-                  : Text(m.role!, style: const TextStyle(fontSize: 12)),
+              subtitle: Text(
+                sub,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              ),
               trailing: m.id == me
                   ? Chip(
                       label: Text(_t('you')),
