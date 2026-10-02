@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import '../config/chat_config.dart';
 import '../models.dart';
 
@@ -150,6 +152,56 @@ class StreamChatHttpClient {
     }
   }
 
+  /// The longest edge a chat photo is uploaded at, and the JPEG quality it is
+  /// re-encoded with. A bubble never shows more than this, and the host app's
+  /// upload endpoint runs behind PHP's upload ceiling (2 MB on a stock
+  /// install) - a phone camera writes 4-12 MB, which PHP discards before any
+  /// application code runs, so the app sees a bare "file is required" and the
+  /// photo silently never sends. Shrinking here is what makes a real camera
+  /// photo uploadable at all; it is not a bandwidth nicety.
+  static const int _imageMaxEdge = 1080;
+  static const int _imageQuality = 82;
+
+  /// The multipart part for an image upload: the picked file re-encoded down
+  /// to [_imageMaxEdge]. Falls back to the original bytes whenever the codec
+  /// cannot read the file (an unusual format) or the result is no smaller
+  /// (an already-small image, a screenshot), so no picture is ever lost to
+  /// this step.
+  Future<MultipartFile> _imagePart(String filePath) async {
+    final originalBytes = await File(filePath).length();
+    try {
+      final shrunk = await FlutterImageCompress.compressWithFile(
+        filePath,
+        minWidth: _imageMaxEdge,
+        minHeight: _imageMaxEdge,
+        quality: _imageQuality,
+      );
+      if (shrunk != null && shrunk.lengthInBytes < originalBytes) {
+        config.logger.d(
+          'Image shrunk for upload: $originalBytes -> ${shrunk.lengthInBytes} bytes',
+        );
+        return MultipartFile.fromBytes(
+          shrunk,
+          filename: _jpegName(filePath),
+          contentType: DioMediaType('image', 'jpeg'),
+        );
+      }
+      config.logger.d('Image left as picked for upload: $originalBytes bytes');
+    } catch (e) {
+      config.logger.w('Image compression failed; uploading the original: $e');
+    }
+    return MultipartFile.fromFile(filePath);
+  }
+
+  /// The original file's name with a .jpg extension, since the shrunk bytes
+  /// are always JPEG - a .png name on JPEG bytes misleads every viewer that
+  /// trusts the name over the content type.
+  String _jpegName(String filePath) {
+    final base = filePath.split(Platform.pathSeparator).last.split('/').last;
+    final dot = base.lastIndexOf('.');
+    return '${dot > 0 ? base.substring(0, dot) : base}.jpg';
+  }
+
   /// Upload an image file to the chat API
   /// Sends multipart form data to /chat/upload-image endpoint
   /// Returns response with uploaded image URL
@@ -166,7 +218,7 @@ class StreamChatHttpClient {
       final formData = FormData.fromMap({
         'channel_id': channelId,
         // 'user_id': userId,
-        'file': await MultipartFile.fromFile(filePath),
+        'file': await _imagePart(filePath),
       });
 
       config.logger.d('Uploading image file: $filePath');
