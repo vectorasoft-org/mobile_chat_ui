@@ -1,6 +1,6 @@
 name: vs_chat_example
 description: "vs_chat_flutter in VISITOR mode: a public app with no backend, talking to chat-service with a publishable key."
-publish_to: 'none'
+publish_to: "none"
 version: 1.0.0+1
 
 environment:

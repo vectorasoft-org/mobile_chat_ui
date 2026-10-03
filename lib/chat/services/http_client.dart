@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import '../config/chat_config.dart';
@@ -215,6 +216,11 @@ class StreamChatHttpClient {
         'HTTP POST /chat/resource for channel: $channelId',
       );
 
+      final file = await MultipartFile.fromFile(filePath);
+      config.logger.d(
+        "Created File from path: $filePath, size: ${file.length}",
+      );
+
       final formData = FormData.fromMap({
         'channel_id': channelId,
         // 'user_id': userId,
@@ -243,7 +249,9 @@ class StreamChatHttpClient {
         // The payload (key, full_path, namespace) lives under data.object.
         final data = jsonData['data'] as Map<String, dynamic>?;
         final object = data?['object'] as Map<String, dynamic>?;
-        return object ?? jsonData as Map<String, dynamic>;
+        final result = object ?? jsonData as Map<String, dynamic>;
+        config.logger.d('Image upload success response: $result');
+        return result;
       } else {
         throw _logAndThrowFailure('Upload image ($filePath)', response);
       }
@@ -272,7 +280,7 @@ class StreamChatHttpClient {
       final formData = FormData.fromMap({
         'channel_id': channelId,
         // 'user_id': userId,
-        'file': await MultipartFile.fromFile(filePath),
+        'file': await _imagePart(filePath),
       });
 
       config.logger.d('Uploading file: $filePath');
@@ -296,7 +304,9 @@ class StreamChatHttpClient {
         // The payload (key, full_path, namespace) lives under data.object.
         final data = jsonData['data'] as Map<String, dynamic>?;
         final object = data?['object'] as Map<String, dynamic>?;
-        return object ?? jsonData as Map<String, dynamic>;
+        final result = object ?? jsonData as Map<String, dynamic>;
+        config.logger.d('File upload success response: $result');
+        return result;
       } else {
         throw _logAndThrowFailure('Upload file ($filePath)', response);
       }
@@ -316,19 +326,24 @@ class StreamChatHttpClient {
     required String channelId,
     required String userId,
     required String fileName,
-    required List<int> bytes,
+    required Uint8List bytes,
   }) async {
     try {
       config.logger.i(
         'HTTP POST /chat/resource (bytes) for channel: $channelId',
       );
 
+      final file = MultipartFile.fromBytes(
+        bytes,
+        filename: fileName,
+      );
+      config.logger.d(
+        "Created MultipartFile from bytes: $fileName (${bytes.length} bytes)",
+      );
+
       final formData = FormData.fromMap({
         'channel_id': channelId,
-        'file': MultipartFile.fromBytes(
-          bytes,
-          filename: fileName,
-        ),
+        'file': file,
       });
 
       config.logger.d(
@@ -354,7 +369,9 @@ class StreamChatHttpClient {
         // The payload (key, full_path, namespace) lives under data.object.
         final data = jsonData['data'] as Map<String, dynamic>?;
         final object = data?['object'] as Map<String, dynamic>?;
-        return object ?? jsonData as Map<String, dynamic>;
+        final result = object ?? jsonData as Map<String, dynamic>;
+        config.logger.d('Bytes file upload success response: $result');
+        return result;
       } else {
         throw _logAndThrowFailure(
           'Upload bytes file ($fileName, ${bytes.length} bytes)',
