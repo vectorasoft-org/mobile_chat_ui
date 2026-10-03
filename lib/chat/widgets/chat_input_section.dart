@@ -274,6 +274,10 @@ class _ChatInputSectionState extends State<ChatInputSection> {
 
             // Return to chat immediately
             widget.onMessageSent();
+          } else {
+            widget.chatConfig.logger.d(
+              'User canceled taking photo with camera',
+            );
           }
         } catch (e) {
           widget.chatConfig.logger.e(

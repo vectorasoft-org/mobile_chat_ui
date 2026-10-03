@@ -488,8 +488,7 @@ class RealChatService extends ChatService {
             final responseData =
                 uploadResponse['data'] as Map<String, dynamic>? ??
                 uploadResponse;
-            final imageUrl =
-                config.resourceUrl(responseData['full_path']);
+            final imageUrl = config.resourceUrl(responseData['full_path']);
 
             config.logger.i('Image uploaded successfully. URL: $imageUrl');
 
@@ -634,8 +633,7 @@ class RealChatService extends ChatService {
             final responseData =
                 uploadResponse['data'] as Map<String, dynamic>? ??
                 uploadResponse;
-            final fileUrl =
-                config.resourceUrl(responseData['full_path']);
+            final fileUrl = config.resourceUrl(responseData['full_path']);
 
             config.logger.i('Video uploaded successfully. URL: $fileUrl');
 
@@ -667,8 +665,7 @@ class RealChatService extends ChatService {
                     final thumbData =
                         thumbResponse['data'] as Map<String, dynamic>? ??
                         thumbResponse;
-                    final thumbUrl =
-                        config.resourceUrl(thumbData['full_path']);
+                    final thumbUrl = config.resourceUrl(thumbData['full_path']);
                     placeholderAttachment['thumb_url'] = thumbUrl;
                     config.logger.d(
                       'Added client-generated video thumbnail URL: $thumbUrl',
@@ -824,8 +821,7 @@ class RealChatService extends ChatService {
                   final responseData =
                       uploadResponse['data'] as Map<String, dynamic>? ??
                       uploadResponse;
-                  final fileUrl =
-                      config.resourceUrl(responseData['full_path']);
+                  final fileUrl = config.resourceUrl(responseData['full_path']);
                   attachment['asset_url'] = fileUrl;
 
                   // Prefer server-provided thumbnail, else upload the
@@ -846,8 +842,9 @@ class RealChatService extends ChatService {
                           final thumbData =
                               thumbResponse['data'] as Map<String, dynamic>? ??
                               thumbResponse;
-                          final thumbUrl =
-                              config.resourceUrl(thumbData['full_path']);
+                          final thumbUrl = config.resourceUrl(
+                            thumbData['full_path'],
+                          );
                           attachment['thumb_url'] = thumbUrl;
                           return thumbResponse;
                         });
@@ -880,8 +877,9 @@ class RealChatService extends ChatService {
                   final responseData =
                       uploadResponse['data'] as Map<String, dynamic>? ??
                       uploadResponse;
-                  final imageUrl =
-                      config.resourceUrl(responseData['full_path']);
+                  final imageUrl = config.resourceUrl(
+                    responseData['full_path'],
+                  );
                   attachment['image_url'] = imageUrl;
                   return uploadResponse;
                 }),
@@ -1037,8 +1035,7 @@ class RealChatService extends ChatService {
             final responseData =
                 uploadResponse['data'] as Map<String, dynamic>? ??
                 uploadResponse;
-            final fileUrl =
-                config.resourceUrl(responseData['full_path']);
+            final fileUrl = config.resourceUrl(responseData['full_path']);
             // final fileUrl = responseData['file'] as String?;
 
             config.logger.i('File uploaded successfully. URL: $fileUrl');
@@ -1166,8 +1163,7 @@ class RealChatService extends ChatService {
                 final responseData =
                     uploadResponse['data'] as Map<String, dynamic>? ??
                     uploadResponse;
-                final fileUrl =
-                    config.resourceUrl(responseData['full_path']);
+                final fileUrl = config.resourceUrl(responseData['full_path']);
                 attachment['asset_url'] = fileUrl;
                 return uploadResponse;
               }),
@@ -1349,8 +1345,7 @@ class RealChatService extends ChatService {
             final responseData =
                 uploadResponse['data'] as Map<String, dynamic>? ??
                 uploadResponse;
-            final fileUrl =
-                config.resourceUrl(responseData['full_path']);
+            final fileUrl = config.resourceUrl(responseData['full_path']);
             // final fileUrl = responseData['file'] as String?;
 
             config.logger.i(
@@ -1600,8 +1595,7 @@ class RealChatService extends ChatService {
       );
       final responseData =
           uploadResponse['data'] as Map<String, dynamic>? ?? uploadResponse;
-      final resourceUrl =
-          config.resourceUrl(responseData['full_path']);
+      final resourceUrl = config.resourceUrl(responseData['full_path']);
       config.logger.i(
         'LOCATION_THUMB uploaded, URL: $resourceUrl '
         '(${stopwatch.elapsedMilliseconds}ms total)',
