@@ -19,6 +19,10 @@ class ChatTheme {
   final Color messageDeletedText;
 
   // ===== INPUT AREA =====
+  /// The composer bar surface (behind the field and its controls).
+  final Color inputBarBackground;
+  /// The capsule fill of the message field itself.
+  final Color inputFieldFill;
   final Color inputBackground;
   final Color inputBorder;
   final Color inputBorderFocused;
@@ -90,6 +94,8 @@ class ChatTheme {
     this.messageDeletedBackground = const Color(0xFFF5F5F5),
     this.messageDeletedText = const Color(0xFF999999),
     // Input area
+    this.inputBarBackground = Colors.white,
+    this.inputFieldFill = const Color(0xFFF1F1F4),
     this.inputBackground = Colors.white,
     this.inputBorder = const Color(0xFFDDDDDD),
     this.inputBorderFocused = const Color(0xFFEC1D27),
@@ -246,6 +252,8 @@ class ChatTheme {
     Color? messageTimestamp,
     Color? messageDeletedBackground,
     Color? messageDeletedText,
+    Color? inputBarBackground,
+    Color? inputFieldFill,
     Color? inputBackground,
     Color? inputBorder,
     Color? inputBorderFocused,
@@ -304,6 +312,8 @@ class ChatTheme {
       messageDeletedBackground:
           messageDeletedBackground ?? this.messageDeletedBackground,
       messageDeletedText: messageDeletedText ?? this.messageDeletedText,
+      inputBarBackground: inputBarBackground ?? this.inputBarBackground,
+      inputFieldFill: inputFieldFill ?? this.inputFieldFill,
       inputBackground: inputBackground ?? this.inputBackground,
       inputBorder: inputBorder ?? this.inputBorder,
       inputBorderFocused: inputBorderFocused ?? this.inputBorderFocused,

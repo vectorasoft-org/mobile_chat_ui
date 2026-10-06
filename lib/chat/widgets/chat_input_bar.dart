@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'chat_input_actions.dart';
 import 'chat_input_content.dart';
 import 'record_button_v2.dart';
@@ -8,7 +7,6 @@ import '../config/chat_logger.dart';
 
 class ChatInputBar extends StatelessWidget {
   final bool isRecording;
-  final bool hasFocus;
   final bool hasPendingRecording;
   final RecordingController recordingController;
   final TextEditingController textController;
@@ -34,7 +32,6 @@ class ChatInputBar extends StatelessWidget {
     super.key,
     required this.isRecording,
     this.hasPendingRecording = false,
-    required this.hasFocus,
     required this.recordingController,
     required this.textController,
     required this.focusNode,
@@ -56,58 +53,63 @@ class ChatInputBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        if (attachmentsEnabled) ...[
-        ChatInputActions(
-          hasFocus: hasFocus,
-          onPickFile: onPickFile,
-          onPickImage: onPickImage,
-          onTakePhoto: onTakePhoto,
-          onPickLocation: onPickLocation,
-        ),
-        ChatInputImageButton(
-          hasFocus: hasFocus,
-          onPressed: onPickImage,
-        ),
-        ],
-        Visibility(
-          visible: !hasFocus && attachmentsEnabled,
-          maintainSize: false,
-          maintainAnimation: true,
-          maintainState: true,
-          child: RecordButtonV2(
-            recordingController: recordingController,
-            onRecordingComplete: (filePath, duration) =>
-                recordCallbacks.onRecordingComplete(filePath, duration),
-            onRecordingStart: recordCallbacks.onRecordingStart,
-            onRecordingCancel: recordCallbacks.onRecordingCancel,
-            requestPermission: requestPermission,
-            hasPermission: hasPermission,
-            logger: logger,
-          ),
-        ),
-        if (attachmentsEnabled) ChatInputSpacing(hasFocus: hasFocus) else SizedBox(width: 8.w),
-        ChatInputContent(
-          isRecording: isRecording,
-          textController: textController,
-          focusNode: focusNode,
-          volumeStream: volumeStream,
-          timerText: timerText,
-          onTextFocusOut: onTextFocusOut,
-        ),
-        SizedBox(width: 4.w),
-        ListenableBuilder(
-          listenable: recordingController,
-          builder: (context, _) => ChatInputSendButton(
-            isRecording: isRecording,
-            hasPendingRecording: hasPendingRecording,
-            isTapping: recordingController.isTapMode,
-            isHolding: recordingController.isHoldMode,
-            onPressed: onSendMessage,
-          ),
-        ),
-      ],
+    // One source of truth for what the bar offers: an empty field offers
+    // voice, a field with text offers send. Nothing swaps on focus, so the
+    // row never jumps while the keyboard opens.
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: textController,
+      builder: (context, value, _) {
+        final hasText = value.text.trim().isNotEmpty;
+        final busyRecording = isRecording || hasPendingRecording;
+        final showSend = hasText || busyRecording || !attachmentsEnabled;
+        final showMic = attachmentsEnabled && (!hasText || busyRecording);
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (attachmentsEnabled)
+              ChatInputActions(
+                onPickFile: onPickFile,
+                onPickImage: onPickImage,
+                onTakePhoto: onTakePhoto,
+                onPickLocation: onPickLocation,
+              )
+            else
+              const SizedBox(width: ChatInputMetrics.gap),
+            const SizedBox(width: ChatInputMetrics.gap),
+            ChatInputContent(
+              isRecording: isRecording,
+              textController: textController,
+              focusNode: focusNode,
+              volumeStream: volumeStream,
+              timerText: timerText,
+              onTextFocusOut: onTextFocusOut,
+            ),
+            const SizedBox(width: ChatInputMetrics.gap),
+            if (showMic)
+              RecordButtonV2(
+                recordingController: recordingController,
+                onRecordingComplete: (filePath, duration) =>
+                    recordCallbacks.onRecordingComplete(filePath, duration),
+                onRecordingStart: recordCallbacks.onRecordingStart,
+                onRecordingCancel: recordCallbacks.onRecordingCancel,
+                requestPermission: requestPermission,
+                hasPermission: hasPermission,
+                logger: logger,
+              ),
+            if (showSend)
+              ListenableBuilder(
+                listenable: recordingController,
+                builder: (context, _) => ChatInputSendButton(
+                  enabled: (hasText || hasPendingRecording || isRecording) &&
+                      !(recordingController.isHoldMode &&
+                          !hasPendingRecording),
+                  onPressed: onSendMessage,
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
