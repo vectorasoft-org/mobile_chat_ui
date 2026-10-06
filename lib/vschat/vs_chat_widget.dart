@@ -431,11 +431,22 @@ class _VSChatTopicsViewState extends State<VSChatTopicsView> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Text(
-                VSChat.t('chooseTopic'),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              // The QUESTION is a quiet label; the TOPICS are the choices.
+              // Same split, sizes and colours as the web widget (.vschat-pask /
+              // .vschat-topic): muted #6B7280 vs text #1C1A19.
+              Padding(
+                padding: const EdgeInsets.only(left: 2),
+                child: Text(
+                  VSChat.t('chooseTopic'),
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.5,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
               if (topics.isEmpty)
                 _Empty(icon: Icons.topic_outlined, text: VSChat.t('noTopics')),
               for (final t in topics)
@@ -620,7 +631,7 @@ class _Card extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                      Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF1C1A19))),
                       if (subtitle != null && subtitle!.isNotEmpty)
                         Text(subtitle!, style: const TextStyle(color: Colors.black54, fontSize: 13)),
                     ],

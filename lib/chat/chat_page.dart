@@ -332,6 +332,8 @@ class _ChatViewState extends State<ChatView> {
   late Future<List<Message>> _messagesFuture;
   late RecordingController _recordingController;
   bool _hasMoreMessages = true;
+  /// One lazy page - the same size as the web widget's (historyLimit 50).
+  static const int _pageSize = 50;
   late AttachmentMenuHandler _menuHandler;
   late FileDownloadHandler _downloadHandler;
   late String _currentUserOfficialCode = 'unknown';
@@ -405,7 +407,13 @@ class _ChatViewState extends State<ChatView> {
     // Use injected chat service
     _chatConfig.logger.i('ChatService provided: ${_chatService.runtimeType}');
 
-    _messagesFuture = _chatService.getMessages(channelId: widget.channelId);
+    _messagesFuture = _chatService.getMessages(
+      channelId: widget.channelId,
+      limit: _pageSize,
+    );
+    _messagesFuture.then((m) {
+      if (m.length < _pageSize) _hasMoreMessages = false;
+    }, onError: (_) {});
 
     _chatConfig.logger.i('Messages future created, awaiting results...');
 
@@ -531,14 +539,18 @@ class _ChatViewState extends State<ChatView> {
       // Fetch older messages
       final olderMessages = await _chatService.getMessages(
         channelId: widget.channelId,
-        limit: 20,
+        limit: _pageSize,
         getMessageOpt: GetMessageOpt.lt,
         optMessageId: oldestMessage.id,
       );
 
+      // A short page is the start of the conversation: stop asking.
+      if (olderMessages.length < _pageSize) {
+        _chatConfig.logger.d('Reached the start of the conversation');
+        _hasMoreMessages = false;
+      }
       if (olderMessages.isEmpty) {
         _chatConfig.logger.d('No older messages available');
-        _hasMoreMessages = false;
       } else {
         _chatConfig.logger.d('Loaded ${olderMessages.length} older messages');
       }

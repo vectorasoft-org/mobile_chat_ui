@@ -131,9 +131,17 @@ class StreamChatSocketIoClient {
     if (_socket == null) {
       throw Exception("socketClient is not initialized");
     }
+    /* Paging BACKWARDS (id_lt / id_lte) must ask for newest-first: the engine
+       orders, then limits, so the default asc + limit returned the OLDEST
+       page of the whole room - lazy loading jumped to the start and stopped.
+       The page is flipped back to ascending below, as the cache expects. */
+    final backwards =
+        filter != null && filter.refMessageOpt.startsWith('id_l');
     final data = await _socket!.emitWithAckAsync("replay-history", {
+      "limit": limit,
       "refMessageOpt": ?filter?.refMessageOpt,
       "refMessageId": ?filter?.refMessageId,
+      if (backwards) "messageOrder": "desc",
     });
     if (data['status_code'] != 200) {
       throw Exception(
@@ -141,9 +149,10 @@ class StreamChatSocketIoClient {
       );
     } else {
       final messagesJson = data['data']! as List<dynamic>;
-      final messages = messagesJson
+      var messages = messagesJson
           .map((js) => Message.fromStreamChatJson(js))
           .toList();
+      if (backwards) messages = messages.reversed.toList();
       // History rows carry whatever URL the sender's surface minted -
       // rebase each onto this app's own resource route.
       for (final m in messages) {

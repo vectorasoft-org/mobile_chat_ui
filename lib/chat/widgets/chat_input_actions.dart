@@ -11,6 +11,8 @@ class ChatInputMetrics {
 
   static const double control = 44.0;
   static const double icon = 22.0;
+  /// The mic reads a touch small beside the field at 22: 6% larger.
+  static const double micIcon = icon * 1.06;
   static const double gap = 4.0;
 }
 
@@ -33,11 +35,32 @@ class ChatInputActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = ChatThemeProvider.of(context);
-    return ChatInputIconButton(
-      icon: Icons.add_rounded,
-      color: theme.inputIcon,
-      tooltip: ChatLocalizations.text(context, 'attachTitle'),
-      onPressed: () => _openSheet(context, theme),
+    // The bar's one invitation to attach: a bold plus in the brand colour on a
+    // soft tint of it - it reads as a button, not as one more grey glyph.
+    final button = InkResponse(
+      onTap: () => _openSheet(context, theme),
+      radius: ChatInputMetrics.control / 2,
+      child: SizedBox(
+        width: ChatInputMetrics.control,
+        height: ChatInputMetrics.control,
+        child: Center(
+          child: Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: theme.primaryColor.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: CustomPaint(
+              painter: _PlusPainter(color: theme.primaryColor),
+            ),
+          ),
+        ),
+      ),
+    );
+    return Tooltip(
+      message: ChatLocalizations.text(context, 'attachTitle'),
+      child: Semantics(button: true, child: button),
     );
   }
 
@@ -68,6 +91,28 @@ class ChatInputActions extends StatelessWidget {
         break;
     }
   }
+}
+
+/// A plus with a heavier, rounded stroke than the Material glyph allows.
+class _PlusPainter extends CustomPainter {
+  final Color color;
+
+  const _PlusPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2.6
+      ..strokeCap = StrokeCap.round;
+    final c = size.center(Offset.zero);
+    const arm = 7.5;
+    canvas.drawLine(c.translate(-arm, 0), c.translate(arm, 0), paint);
+    canvas.drawLine(c.translate(0, -arm), c.translate(0, arm), paint);
+  }
+
+  @override
+  bool shouldRepaint(_PlusPainter old) => old.color != color;
 }
 
 class _AttachmentSheet extends StatelessWidget {
