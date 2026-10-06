@@ -7,6 +7,11 @@ const Map<String, Map<String, String>> chatStrings = {
   'en': {
     // Room
     'inputHint': 'Type a message',
+    'attachTitle': 'Attach',
+    'attachPhoto': 'Photo',
+    'attachCamera': 'Camera',
+    'attachFile': 'File',
+    'attachLocation': 'Location',
     'slideToCancel': 'Slide to cancel',
     'releaseToCancel': 'Release to cancel',
     'errorLabel': 'Error',
@@ -83,6 +88,11 @@ const Map<String, Map<String, String>> chatStrings = {
   },
   'km': {
     'inputHint': 'សរសេរសារ',
+    'attachTitle': 'ភ្ជាប់ឯកសារ',
+    'attachPhoto': 'រូបភាព',
+    'attachCamera': 'ថតរូប',
+    'attachFile': 'ឯកសារ',
+    'attachLocation': 'ទីតាំង',
     'slideToCancel': 'អូសទាញដើម្បីបោះបង់',
     'releaseToCancel': 'ដោះលែងដើម្បីបោះបង់',
     'errorLabel': 'កំហុស',

@@ -8,6 +8,7 @@ import '../config/chat_theme_provider.dart';
 import '../controllers/recording_controller.dart';
 import '../config/chat_logger.dart';
 import '../services/chat_localizations.dart';
+import 'chat_input_actions.dart';
 
 typedef RecordingCompleteCallback =
     Future<void> Function(
@@ -406,8 +407,8 @@ class _RecordButtonV2State extends State<RecordButtonV2> {
           // but we don't want to cancel here because onTapUp will handle the release properly
         },
         child: SizedBox(
-          width: 50.w,
-          height: 50.h,
+          width: ChatInputMetrics.control,
+          height: ChatInputMetrics.control,
           child: Stack(
             clipBehavior: Clip.none,
             children: [
@@ -416,8 +417,12 @@ class _RecordButtonV2State extends State<RecordButtonV2> {
                   widget.recordingController.isTapMode
                       ? Icons.delete
                       : Icons.mic,
-                  size: 24.sp,
-                  color: theme.recordButtonIconColor,
+                  size: ChatInputMetrics.icon,
+                  // Neutral at rest; the accent appears only once recording.
+                  color: widget.recordingController.isTapMode ||
+                          widget.recordingController.isHoldMode
+                      ? theme.recordButtonIconColor
+                      : theme.inputIcon,
                 ),
               ),
               if (widget.recordingController.isHoldMode)

@@ -116,7 +116,6 @@ class _ChatInputSectionState extends State<ChatInputSection> {
       attachmentsEnabled: widget.chatConfig.attachmentsEnabled,
       isRecording: _isRecording,
       hasPendingRecording: _pendingRecordingPath != null,
-      hasFocus: _textInputFocusNode.hasFocus,
       recordingController: widget.recordingController,
       textController: textInputMessageController,
       focusNode: _textInputFocusNode,

@@ -847,10 +847,11 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Widget _buildInputDivider(ChatTheme theme) {
+    // A hairline, not a rule: it separates without drawing attention.
     return Divider(
-      height: 1,
-      thickness: 1,
-      color: theme.getThemeAwareDividerColor(),
+      height: 0.5,
+      thickness: 0.5,
+      color: theme.dividerColor,
     );
   }
 
@@ -2002,8 +2003,8 @@ class _ChatViewState extends State<ChatView> {
   Widget _buildInputArea() {
     return Container(
       key: _inputAreaKey,
-      color: Colors.grey[50],
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+      color: ChatThemeProvider.of(context).inputBarBackground,
+      padding: const EdgeInsets.fromLTRB(6.0, 6.0, 6.0, 6.0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -2130,8 +2131,8 @@ class _ChatViewState extends State<ChatView> {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     return Container(
       height: bottomPadding,
-      // color should be the same color as the input bar
-      color: Colors.grey[50],
+      // Same surface as the input bar, so the two read as one.
+      color: theme.inputBarBackground,
     );
   }
 }
