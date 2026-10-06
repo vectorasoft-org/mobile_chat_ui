@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../config/chat_theme_provider.dart';
 import '../services/chat_localizations.dart';
+import 'chat_input_actions.dart';
 
 class ChatMessageInput extends StatefulWidget {
   final TextEditingController controller;
@@ -69,9 +70,13 @@ class _ChatMessageInputState extends State<ChatMessageInput> {
             TextStyle(fontSize: 15.sp, height: 1.35, color: theme.inputHint),
         filled: true,
         fillColor: focused ? theme.inputBarBackground : theme.inputFieldFill,
-        contentPadding: const EdgeInsets.symmetric(
+        // One line of text makes the capsule exactly as tall as the 44pt
+        // controls beside it, so the bottom-aligned bar shares one centre
+        // line (a fixed 11pt left it ~2pt short). It grows from there.
+        contentPadding: EdgeInsets.symmetric(
           horizontal: 16.0,
-          vertical: 11.0,
+          vertical: ((ChatInputMetrics.control - 15.sp * 1.35) / 2)
+              .clamp(6.0, 16.0),
         ),
         border: capsule(Colors.transparent, 1),
         enabledBorder: capsule(Colors.transparent, 1),

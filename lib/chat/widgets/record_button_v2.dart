@@ -319,8 +319,11 @@ class _RecordButtonV2State extends State<RecordButtonV2> {
   @override
   Widget build(BuildContext context) {
     final theme = ChatThemeProvider.of(context);
+    /* No padding around the 44pt control: the bar bottom-aligns its controls,
+       and an extra 8pt here lifted the mic's centre above the `+`, the field
+       and Send. The control already clears the touch minimum. */
     return Padding(
-      padding: EdgeInsets.all(8.w),
+      padding: EdgeInsets.zero,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTapDown: (details) async {
@@ -417,7 +420,7 @@ class _RecordButtonV2State extends State<RecordButtonV2> {
                   widget.recordingController.isTapMode
                       ? Icons.delete
                       : Icons.mic,
-                  size: ChatInputMetrics.icon,
+                  size: ChatInputMetrics.micIcon,
                   // Neutral at rest; the accent appears only once recording.
                   color: widget.recordingController.isTapMode ||
                           widget.recordingController.isHoldMode
