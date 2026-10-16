@@ -332,6 +332,7 @@ class _ChatViewState extends State<ChatView> {
   late Future<List<Message>> _messagesFuture;
   late RecordingController _recordingController;
   bool _hasMoreMessages = true;
+
   /// One lazy page - the same size as the web widget's (historyLimit 50).
   static const int _pageSize = 50;
   late AttachmentMenuHandler _menuHandler;
@@ -1796,7 +1797,6 @@ class _ChatViewState extends State<ChatView> {
       final filePath = '${downloadsDir.path}/$sanitizedFileName';
       final file = File(filePath);
 
-      // Check if file already exists - skip download if cached
       if (await file.exists()) {
         _chatConfig.logger.i('File already exists in downloads: $filePath');
         await _openFileAndHandleErrors(filePath, 'File');
@@ -1825,6 +1825,8 @@ class _ChatViewState extends State<ChatView> {
         try {
           final httpClient = HttpClient();
           final request = await httpClient.getUrl(Uri.parse(assetUrl));
+          final headers = _chatConfig.httpAuthHeaders();
+          headers.forEach(request.headers.set);
           final response = await request.close();
           if (response.statusCode == 200) {
             fileBytes ??= Uint8List.fromList(
