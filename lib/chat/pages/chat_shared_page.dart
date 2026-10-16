@@ -155,16 +155,16 @@ class _ChatSharedPageState extends State<ChatSharedPage> {
         );
 
   Widget _empty(IconData icon, String key) => ListView(
-        children: [
-          const SizedBox(height: 72),
-          Icon(icon, size: 56, color: Colors.black26),
-          const SizedBox(height: 12),
-          Center(
-            child: Text(_t(key), style: const TextStyle(color: Colors.black45)),
-          ),
-          _loadOlderButton(),
-        ],
-      );
+    children: [
+      const SizedBox(height: 72),
+      Icon(icon, size: 56, color: Colors.black26),
+      const SizedBox(height: 12),
+      Center(
+        child: Text(_t(key), style: const TextStyle(color: Colors.black45)),
+      ),
+      _loadOlderButton(),
+    ],
+  );
 
   Widget _mediaTab(List<_Item> items) {
     if (items.isEmpty) return _empty(Icons.photo_library_outlined, 'noMedia');
@@ -179,7 +179,7 @@ class _ChatSharedPageState extends State<ChatSharedPage> {
               crossAxisSpacing: 2,
             ),
             itemCount: items.length,
-            itemBuilder: (context, i) => _mediaTile(items[i]),
+            itemBuilder: (context, i) => _mediaTile(context, items[i]),
           ),
         ),
         SliverToBoxAdapter(child: _loadOlderButton()),
@@ -197,7 +197,7 @@ class _ChatSharedPageState extends State<ChatSharedPage> {
     );
   }
 
-  Widget _mediaTile(_Item item) {
+  Widget _mediaTile(BuildContext context, _Item item) {
     final thumb = item.isVideo ? item.a['thumb_url'] as String? : item.url;
     return GestureDetector(
       onTap: () => item.isVideo
@@ -225,8 +225,10 @@ class _ChatSharedPageState extends State<ChatSharedPage> {
               imageUrl: thumb,
               httpHeaders: widget.config.httpAuthHeaders(),
               fit: BoxFit.cover,
-              errorWidget: (_, _, _) =>
-                  const Icon(Icons.broken_image_outlined, color: Colors.black26),
+              errorWidget: (_, _, _) => const Icon(
+                Icons.broken_image_outlined,
+                color: Colors.black26,
+              ),
             ),
           if (item.isVideo)
             const Center(
@@ -270,8 +272,9 @@ class _ChatSharedPageState extends State<ChatSharedPage> {
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: items.length + 1,
-      separatorBuilder: (_, i) =>
-          i < items.length - 1 ? const Divider(height: 1, indent: 72) : const SizedBox.shrink(),
+      separatorBuilder: (_, i) => i < items.length - 1
+          ? const Divider(height: 1, indent: 72)
+          : const SizedBox.shrink(),
       itemBuilder: (context, i) {
         if (i == items.length) return _loadOlderButton();
         final item = items[i];
@@ -365,7 +368,11 @@ class _ChatSharedPageState extends State<ChatSharedPage> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.name, required this.theme, required this.members});
+  const _Header({
+    required this.name,
+    required this.theme,
+    required this.members,
+  });
 
   final String name;
   final ChatTheme theme;
@@ -373,52 +380,57 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              theme.primaryColor,
-              Color.lerp(theme.primaryColor, Colors.black, 0.25)!,
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          theme.primaryColor,
+          Color.lerp(theme.primaryColor, Colors.black, 0.25)!,
+        ],
+      ),
+    ),
+    padding: const EdgeInsets.fromLTRB(20, 56, 20, 56),
+    child: Row(
+      children: [
+        _Avatar(
+          label: name,
+          color: Colors.white,
+          size: 60,
+          onPrimary: theme.primaryColor,
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              FutureBuilder<List<ChatMember>>(
+                future: members,
+                builder: (context, snap) => Text(
+                  snap.hasData && snap.data!.isNotEmpty
+                      ? '${snap.data!.length} ${ChatLocalizations.text(context, 'members').toLowerCase()}'
+                      : '',
+                  style: const TextStyle(color: Colors.white70),
+                ),
+              ),
             ],
           ),
         ),
-        padding: const EdgeInsets.fromLTRB(20, 56, 20, 56),
-        child: Row(
-          children: [
-            _Avatar(label: name, color: Colors.white, size: 60, onPrimary: theme.primaryColor),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  FutureBuilder<List<ChatMember>>(
-                    future: members,
-                    builder: (context, snap) => Text(
-                      snap.hasData && snap.data!.isNotEmpty
-                          ? '${snap.data!.length} ${ChatLocalizations.text(context, 'members').toLowerCase()}'
-                          : '',
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
+      ],
+    ),
+  );
 }
 
 /// Initials in a tinted circle.
@@ -437,11 +449,19 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final words = label.trim().split(RegExp(r'[\s_-]+')).where((w) => w.isNotEmpty);
-    final initials = words.take(2).map((w) => w.characters.first.toUpperCase()).join();
+    final words = label
+        .trim()
+        .split(RegExp(r'[\s_-]+'))
+        .where((w) => w.isNotEmpty);
+    final initials = words
+        .take(2)
+        .map((w) => w.characters.first.toUpperCase())
+        .join();
     return CircleAvatar(
       radius: size / 2,
-      backgroundColor: onPrimary == null ? color.withValues(alpha: 0.12) : color,
+      backgroundColor: onPrimary == null
+          ? color.withValues(alpha: 0.12)
+          : color,
       child: Text(
         initials.isEmpty ? '#' : initials,
         style: TextStyle(
@@ -465,20 +485,22 @@ class _Item {
   String get _mime => (a['mime_type'] as String? ?? '').toLowerCase();
 
   bool get isVideo => _type == 'video' || _mime.startsWith('video/');
-  bool get isMedia =>
-      isVideo || _type == 'image' || _mime.startsWith('image/');
-  bool get isFile =>
-      !isMedia && (a['asset_url'] ?? a['image_url']) != null;
+  bool get isMedia => isVideo || _type == 'image' || _mime.startsWith('image/');
+  bool get isFile => !isMedia && (a['asset_url'] ?? a['image_url']) != null;
 
   String get url => (a['image_url'] ?? a['asset_url'] ?? '') as String;
   String get name => (a['title'] ?? a['fallback'] ?? 'File').toString();
 
   IconData get icon {
-    if (_type == 'voicerecording' || _type == 'audio' || _mime.startsWith('audio/')) {
+    if (_type == 'voicerecording' ||
+        _type == 'audio' ||
+        _mime.startsWith('audio/')) {
       return Icons.mic_rounded;
     }
     if (_mime.contains('pdf')) return Icons.picture_as_pdf_rounded;
-    if (_mime.contains('sheet') || _mime.contains('excel') || _mime.contains('csv')) {
+    if (_mime.contains('sheet') ||
+        _mime.contains('excel') ||
+        _mime.contains('csv')) {
       return Icons.table_chart_rounded;
     }
     return Icons.insert_drive_file_rounded;
