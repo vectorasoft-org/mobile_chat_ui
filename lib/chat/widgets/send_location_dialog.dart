@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:geolocator/geolocator.dart';
 import '../config/chat_config.dart';
@@ -81,6 +82,11 @@ class _SendLocationDialogState extends State<SendLocationDialog> {
       _error = null;
     });
     try {
+      final permissionStatus = await Permission.locationWhenInUse.request();
+      if (!permissionStatus.isGranted) {
+        throw Exception('Location permission was not granted.');
+      }
+
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
