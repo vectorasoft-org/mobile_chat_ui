@@ -88,7 +88,6 @@ class FileDownloadHandler {
       final filePath = '${downloadsDir.path}/$sanitizedFileName';
       final file = File(filePath);
 
-      // Check if file already exists - skip download if cached
       if (await file.exists()) {
         _logger.i('File already exists in downloads: $filePath');
         await _handleFileReady(sanitizedFileName, filePath);
@@ -115,7 +114,9 @@ class FileDownloadHandler {
         try {
           final httpClient = HttpClient();
           final request = await httpClient.getUrl(Uri.parse(fileUrl));
-          _config?.httpAuthHeaders().forEach(request.headers.set);
+          final headers =
+              _config?.httpAuthHeaders() ?? const <String, String>{};
+          headers.forEach(request.headers.set);
           final response = await request.close();
           if (response.statusCode == 200) {
             fileBytes ??= Uint8List.fromList(
