@@ -63,7 +63,7 @@ class FileDownloadHandler {
               attachmentType,
               attachment['mime_type'] as String?,
             )
-          : fileName;
+          : 'file_$fileName';
 
       // Sanitize the filename
       final sanitizedFileName = generatedFileName.replaceAll(
