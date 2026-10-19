@@ -1775,10 +1775,11 @@ class _ChatViewState extends State<ChatView> {
       }
 
       // Sanitize the original filename - preserve it for user experience
-      final sanitizedFileName = fileName.replaceAll(
-        RegExp(r'[<>:"/\\|?*]'),
-        '_',
-      );
+      final sanitizedFileName =
+          'file_${fileName.replaceAll(
+            RegExp(r'[<>:"/\\|?*]'),
+            '_',
+          )}';
       _chatConfig.logger.d(
         'Original filename: $fileName, sanitized: $sanitizedFileName',
       );
