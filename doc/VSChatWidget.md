@@ -126,6 +126,26 @@ VSChat.reopen(context, data['channel_id']);
 That is the whole integration. The reference is a single file of about 50
 lines in each app (`app_chat.dart` in hou-driver-v5 and hou-merchant-v5).
 
+### 3.5 Unread badge and alerts
+
+```dart
+VSChatInbox.start();                                  // after sign-in (Home's initState)
+VSChatUnreadBadge(child: Icon(Icons.chat_bubble));    // any chat icon: live total
+VSChatInbox.refresh();                                // "I may have missed something"
+VSChatInbox.stop();                                   // on sign-out
+```
+
+One light socket, joined to no room, carries every unread change for the
+signed-in member. It drives the badge, each row's unread pill in the chat
+list, and the banner (sender + preview; a tap opens that room). A message in
+the room on screen is read on arrival and never counts.
+
+The inbox heals itself: a refused sign-in is retried (5s, doubling to 1
+minute), and coming back from the background reconnects or re-pulls the
+counts. Call `refresh()` yourself when a chat **push** arrives - the engine
+only pushes to a member it sees no socket for, so the push is the proof the
+badge is stale.
+
 ---
 
 ## 4. Modes, entry points and presentation
@@ -209,6 +229,7 @@ notify:  (context, message) async => showInfoDialog(context: context, message: m
 | Live messages | Socket.IO. Messages appear as they are sent, with no refresh |
 | Reconnect | Automatic. Every reconnect fetches a **fresh** token from the host (tokens are single-use) and re-joins the room |
 | Text, emoji, copy, delete own message | Long-press a message |
+| Time and ticks | Every bubble shows its time. An own message shows a clock while sending, **one tick** once sent, **two ticks** once any other member has read it - the same three states as the web widget |
 | Photos, videos, files (multi-select) | Uploaded through the host; a ghost bubble shows progress |
 | Voice notes | Hold to record, slide to cancel |
 | Location | Sends the current position (see §8 for map thumbnails) |
@@ -233,6 +254,29 @@ theme: ChatTheme.brand(c).copyWith(messageReceivedBackground: Colors.white),
 `ChatTheme` exposes about 40 colours: bubbles, input bar, recorder, audio
 player and more. `brand()` derives a consistent set from one colour. Use
 `copyWith` for anything else.
+
+### 6.1 Who is speaking: name, avatar and role
+
+A received message opens with its sender: an initial avatar and their name,
+both in one colour, on the first bubble of a run. Your own messages carry
+neither - the right-hand side already says whose they are.
+
+When the member roster (§8) names a **role** for the sender (`role`, else
+`user_class`), it shows as a chip beside the name and the colour is the
+role's. A roster with no roles - friends chatting - shows no chip and gives
+each person a colour of their own. Nothing to configure for either.
+
+```dart
+senderRoles: const ChatSenderRoles(                 // the default: show when known
+  colors: {'driver': Color(0xFFB45309)},            // optional, keyed by the roster's value
+),
+senderRoles: const ChatSenderRoles.hidden(),        // never show a role
+strings: {'en': {'role_admin': 'Staff'}, 'km': {'role_admin': '...'}},
+```
+
+The chip's text is the roster's value made readable (`operation_officer` →
+"Operation officer") unless the host names it: a `role_<value>` entry in
+`strings` (§7). The package names no role itself.
 
 ---
 

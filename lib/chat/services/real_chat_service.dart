@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
 import 'package:path_provider/path_provider.dart';
@@ -22,6 +23,10 @@ class RealChatService extends ChatService {
 
   // Core state - plain Dart types
   final List<Message> _messagesCache = [];
+
+  /// Our own messages heard on the socket while a send from THIS device was
+  /// still unconfirmed - see [_handleNewMessage].
+  final List<Message> _ownEchoes = [];
   late ChatTheme _selectedTheme;
   late String _channelName;
   late String? _channelId;
@@ -51,6 +56,9 @@ class RealChatService extends ChatService {
 
   @override
   dynamic get client => _httpClient;
+
+  /// When another member last read this room - drives the seen ticks.
+  ValueListenable<DateTime?> get seenAt => _socketClient.seenAt;
 
   @override
   Future<void> initialize() async {
@@ -110,6 +118,7 @@ class RealChatService extends ChatService {
   }
 
   void _notifyMessagesChanged() {
+    _settleOwnEchoes();
     for (final listener in _listeners) {
       listener.onMessagesChanged(List.unmodifiable(_messagesCache));
     }
@@ -186,11 +195,31 @@ class RealChatService extends ChatService {
   }
 
   void _handleNewMessage(Message message) {
-    if (message.sender != _userCode) {
-      _messagesCache.add(message);
-      _notifyMessagesChanged();
-      config.logger.d("New message arrived: ${message.id}");
+    if (_messagesCache.any((m) => m.id == message.id)) return;
+    // Our own id is not only this device: the same member may be writing
+    // from the web portal or a second phone, and that message must appear
+    // here too. Only while a send from THIS device is unconfirmed does an
+    // own message wait - it may be that send's echo, which its ack adds.
+    if (message.sender == _userCode &&
+        _messagesCache.any((m) => m.isSending)) {
+      _ownEchoes.add(message);
+      return;
     }
+    _messagesCache.add(message);
+    _notifyMessagesChanged();
+    config.logger.d("New message arrived: ${message.id}");
+  }
+
+  /// Once nothing is in flight, an own echo the acks did not account for
+  /// came from another device.
+  void _settleOwnEchoes() {
+    if (_ownEchoes.isEmpty || _messagesCache.any((m) => m.isSending)) return;
+    for (final echo in _ownEchoes) {
+      if (_messagesCache.every((m) => m.id != echo.id)) {
+        _messagesCache.add(echo);
+      }
+    }
+    _ownEchoes.clear();
   }
 
   /// Messages sent while the socket was down are gone from the live feed:
@@ -220,13 +249,10 @@ class RealChatService extends ChatService {
         // not found
         continue;
       }
-      if (target.sender == _userCode) {
-        // we'll handle it by ack
-        continue;
-      } else {
-        didChange = true;
-        _messagesCache.remove(target);
-      }
+      // Own messages included: the delete may come from this member's
+      // other device. This device's own delete is idempotent on its ack.
+      didChange = true;
+      _messagesCache.remove(target);
     }
     if (didChange) {
       _notifyMessagesChanged();

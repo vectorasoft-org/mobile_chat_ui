@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../chat/chat_page.dart';
 import '../chat/config/chat_config.dart';
 import '../chat/config/chat_logger.dart';
+import '../chat/config/chat_sender_roles.dart';
 import '../chat/config/chat_service_listener.dart';
 import '../chat/config/chat_theme.dart';
 import '../chat/models.dart';
@@ -178,6 +179,7 @@ class VSChat {
           : _members(known is List ? known : (await post(o.endpoints.members, {'channel_id': channelId}))['data']),
       // No host to upload through: a visitor's composer is text only.
       attachmentsEnabled: o.visitor == null,
+      senderRoles: o.senderRoles,
       theme: o.theme,
       logger: o.logger,
       storage: o.storage,
@@ -479,6 +481,7 @@ class VSChatOptions {
     this.confirm,
     this.notify,
     this.alerts = const VSChatAlerts(),
+    this.senderRoles = const ChatSenderRoles(),
     this.overlayContext,
   })  : visitor = null,
         theme = theme ?? ChatTheme.houExpress(),
@@ -502,6 +505,7 @@ class VSChatOptions {
     this.sheetInitialSize = 0.6,
     this.notify,
     this.alerts = const VSChatAlerts(),
+    this.senderRoles = const ChatSenderRoles(),
     this.overlayContext,
   })  : visitor = VSChatVisitor(baseUrl: baseUrl.replaceAll(RegExp(r'/+$'), ''), key: key),
         api = _visitorApi(baseUrl.replaceAll(RegExp(r'/+$'), '')),
@@ -537,6 +541,11 @@ class VSChatOptions {
 
   final VSChatEndpoints endpoints;
   final ChatTheme theme;
+
+  /// The role chip next to a sender's name in a room, and the colour per
+  /// role. Shown when the member roster names a role;
+  /// `ChatSenderRoles.hidden()` turns it off.
+  final ChatSenderRoles senderRoles;
 
   /// The current language code ('en', 'km'); read on every text.
   final String Function() language;

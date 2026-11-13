@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
@@ -60,6 +62,11 @@ class VSChatInbox {
 
   static io.Socket? _socket;
   static bool _starting = false;
+  static Timer? _retry;
+  static Duration _retryIn = _retryFirst;
+  static const _retryFirst = Duration(seconds: 5);
+  static const _retryMax = Duration(minutes: 1);
+  static final _lifecycle = _InboxLifecycle();
   static String? _watching; // the room on screen reads itself
 
   static int countOf(String channelId) => counts.value[channelId] ?? 0;
@@ -73,6 +80,7 @@ class VSChatInbox {
     try {
       final first = await _session();
       if (first == null) return;
+      VSChat.options.logger.i('[inbox] connecting as ${first['user_id']}');
       var firstToken = first['token']?.toString();
       final s = io.io(
         first['base_url'].toString(),
@@ -87,29 +95,78 @@ class VSChatInbox {
               (t != null
                       ? Future.value(t)
                       : _session().then((x) => x?['token']?.toString()))
-                  .then((tok) => callback(
-                      {'api_key': first['api_key'].toString(), 'token': tok}))
-                  .catchError((Object e) {
-                VSChat.options.logger.e('[inbox] token refresh failed', error: e);
+                  .then((tok) {
+                // No token is no connection: the engine would refuse it and
+                // socket.io never retries a refused sign-in on its own.
+                if (tok == null) return _retryLater('no token');
+                callback({'api_key': first['api_key'].toString(), 'token': tok});
+              }).catchError((Object e) {
+                _retryLater('token refresh failed: $e');
               });
             })
             .enableForceNew()
             .build(),
       );
       _socket = s;
-      s.onConnect((_) => _pullSummary());
+      s.onConnect((_) {
+        _retry?.cancel();
+        _retry = null;
+        _retryIn = _retryFirst;
+        VSChat.options.logger.i('[inbox] connected');
+        _pullSummary();
+      });
+      // A refused sign-in leaves the socket down for good - socket.io only
+      // reconnects a dropped transport - and a dead inbox is silent: no
+      // badge, no banner, and the engine falls back to a push.
+      s.onConnectError((e) => _retryLater('connect refused: $e'));
+      s.onDisconnect((why) => VSChat.options.logger.w('[inbox] disconnected: $why'));
       s.on('unread-changed', _onChanged);
       s.connect();
+      WidgetsBinding.instance.removeObserver(_lifecycle);
+      WidgetsBinding.instance.addObserver(_lifecycle);
     } finally {
       _starting = false;
     }
   }
 
-  /// On sign-out: drop the socket and the counters.
-  static void stop() {
+  /// Make the counts true again: reconnect when the socket is down, else
+  /// re-pull the summary. For any moment the app has reason to think it
+  /// missed something - back from the background (done here), or a chat PUSH
+  /// arriving, which the engine only sends a member it sees no socket for.
+  static Future<void> refresh() async {
+    final s = _socket;
+    if (s == null) return start();
+    if (s.connected) return _pullSummary();
+    _dropSocket();
+    return start();
+  }
+
+  static void _retryLater(String why) {
+    VSChat.options.logger.w('[inbox] $why; retrying in ${_retryIn.inSeconds}s');
+    if (_retry?.isActive ?? false) return;
+    _retry = Timer(_retryIn, () {
+      _retry = null;
+      if (_socket?.connected ?? false) return;
+      refresh();
+    });
+    final next = _retryIn * 2;
+    _retryIn = next > _retryMax ? _retryMax : next;
+  }
+
+  /// The socket only: the counts stay on screen until the next summary.
+  static void _dropSocket() {
     _socket?.disconnect();
     _socket?.dispose();
     _socket = null;
+  }
+
+  /// On sign-out: drop the socket and the counters.
+  static void stop() {
+    _retry?.cancel();
+    _retry = null;
+    _retryIn = _retryFirst;
+    WidgetsBinding.instance.removeObserver(_lifecycle);
+    _dropSocket();
     total.value = 0;
     counts.value = const {};
   }
@@ -117,6 +174,7 @@ class VSChatInbox {
   /// The room being LOOKED at (set by [VSChat.open], cleared when it closes):
   /// its events mark read instead of counting.
   static void watching(String? channelId) {
+    VSChat.options.logger.i('[inbox] watching=$channelId');
     _watching = channelId;
     if (channelId != null) markRead(channelId);
   }
@@ -150,7 +208,11 @@ class VSChatInbox {
   static void _pullSummary() {
     _socket?.emitWithAck('unread-summary', [], ack: (dynamic res) {
       final d = res is Map ? res['data'] : null;
-      if (d is! Map) return;
+      if (d is! Map) {
+        VSChat.options.logger.w('[inbox] summary refused: $res');
+        return;
+      }
+      VSChat.options.logger.i('[inbox] summary: ${d['total']} unread');
       final next = <String, int>{};
       for (final c in (d['channels'] is List ? d['channels'] as List : const [])) {
         if (c is Map) {
@@ -164,11 +226,19 @@ class VSChatInbox {
   }
 
   static void _onChanged(dynamic ev) {
+    VSChat.options.logger.i('[inbox] unread-changed: $ev');
     if (ev is! Map) return;
     final channelId = ev['channel_id']?.toString();
     if (channelId == null) return;
-    if (ev['read'] == true) return _zero(channelId); // read in any session
-    if (channelId == _watching) return markRead(channelId); // on screen now
+    if (ev['read'] == true) {
+      VSChat.options.logger.i('[inbox] -> read event zeroes $channelId');
+      return _zero(channelId); // read in any session
+    }
+    if (channelId == _watching) {
+      VSChat.options.logger.i('[inbox] -> $channelId is watched; marking read');
+      return markRead(channelId); // on screen now
+    }
+    VSChat.options.logger.i('[inbox] -> counting $channelId (watching=$_watching)');
     final next = Map<String, int>.from(counts.value);
     next[channelId] = (next[channelId] ?? 0) + 1;
     counts.value = next;
@@ -260,6 +330,15 @@ class VSChatInbox {
     final next = Map<String, int>.from(counts.value)..remove(channelId);
     counts.value = next;
     total.value = (total.value - had).clamp(0, 1 << 31);
+  }
+}
+
+/// A phone that slept comes back with a dead socket as often as not, and
+/// with messages it never heard about.
+class _InboxLifecycle with WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) VSChatInbox.refresh();
   }
 }
 

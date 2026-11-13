@@ -68,8 +68,10 @@ class _VSChatWidgetState extends State<VSChatWidget> {
   @override
   void initState() {
     super.initState();
-    // Idempotent: covers a user whose chat identity appeared after app start.
-    VSChatInbox.start();
+    // Covers a user whose chat identity appeared after app start, and makes
+    // each row's unread pill true on arrival: a socket that died reconnects,
+    // a live one re-pulls the counts.
+    VSChatInbox.refresh();
   }
 
   Future<void> _reload() async {

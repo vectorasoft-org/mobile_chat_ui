@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'chat_logger.dart';
 import '../storage/api/chat_storage_adapter.dart';
 import '../models.dart';
+import 'chat_sender_roles.dart';
 import 'chat_theme.dart';
 
 /// Central configuration object for the chat module
@@ -45,6 +46,9 @@ class ChatConfig {
   /// Photos, files, voice notes and location in the composer. Off for a
   /// member who has no host to upload through (a public visitor): text only.
   final bool attachmentsEnabled;
+
+  /// The role chip next to a sender's name, and the colour per role.
+  final ChatSenderRoles senderRoles;
 
   /// Theme Configuration
   final ChatTheme theme;
@@ -180,6 +184,7 @@ class ChatConfig {
     this.requestHeaders,
     this.membersProvider,
     this.attachmentsEnabled = true,
+    this.senderRoles = const ChatSenderRoles(),
     required this.theme,
     required this.logger,
     required this.storage,
@@ -212,6 +217,7 @@ class ChatConfig {
     Map<String, String> Function()? requestHeaders,
     Future<List<ChatMember>> Function()? membersProvider,
     bool? attachmentsEnabled,
+    ChatSenderRoles? senderRoles,
     ChatTheme? theme,
     ChatLogger? logger,
     ChatStorageAdapter? storage,
@@ -231,6 +237,7 @@ class ChatConfig {
       requestHeaders: requestHeaders ?? this.requestHeaders,
       membersProvider: membersProvider ?? this.membersProvider,
       attachmentsEnabled: attachmentsEnabled ?? this.attachmentsEnabled,
+      senderRoles: senderRoles ?? this.senderRoles,
       theme: theme ?? this.theme,
       logger: logger ?? this.logger,
       storage: storage ?? this.storage,

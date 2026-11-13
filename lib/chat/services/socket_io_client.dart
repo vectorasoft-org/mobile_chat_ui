@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:vs_chat_flutter/chat/config/chat_config.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:vs_chat_flutter/chat/models.dart';
@@ -8,6 +9,12 @@ class StreamChatSocketIoClient {
   IO.Socket? _socket;
   String? _firstToken;
   String? _joinedChannel;
+
+  /// SEEN TICKS: the latest moment any OTHER member read the joined room.
+  /// The engine says so on join (`channel-reads`) and live (`read-receipt`);
+  /// every own message sent up to then shows two ticks. Same rule as the web
+  /// widget (vschat.js noteSeen).
+  final ValueNotifier<DateTime?> seenAt = ValueNotifier<DateTime?>(null);
 
   void Function(Message)? onNewMessage;
   void Function(List<String>)? onDeletedMessages;
@@ -70,6 +77,11 @@ class StreamChatSocketIoClient {
     // Plural: the server emits 'deleted-messages' (one event, many ids).
     // The singular name meant mobile never saw a delete.
     _socket!.on('deleted-messages', _handleDeletedMessages);
+    _socket!.on('read-receipt', (dynamic p) {
+      if (p is Map && p['channel_id']?.toString() == _joinedChannel) {
+        _noteSeen(p['user_id'], p['last_read_at']);
+      }
+    });
     _socket!.on('ping', (_) => config.logger.d("socket ping"));
     _socket!.on('pong', (_) => config.logger.d("socket pong"));
     _socket!.connect();
@@ -78,6 +90,13 @@ class StreamChatSocketIoClient {
 
   void dispose() {
     _socket?.disconnect().clearListeners();
+  }
+
+  void _noteSeen(dynamic userId, dynamic at) {
+    if (userId == null || userId.toString() == config.resolveUserId()) return;
+    final t = DateTime.tryParse(at?.toString() ?? '');
+    final had = seenAt.value;
+    if (t != null && (had == null || t.isAfter(had))) seenAt.value = t;
   }
 
   void _handleNewMessage(dynamic ackRes) {
@@ -121,6 +140,13 @@ class StreamChatSocketIoClient {
     } else {
       _joinedChannel = channelId;
       config.logger.d("Connected to channel `$channelId`");
+      // An engine without seen ticks never answers: the ticks stay single.
+      _socket!.emitWithAck('channel-reads', [], ack: (dynamic res) {
+        final reads = res is Map && res['data'] is Map ? res['data']['reads'] : null;
+        for (final r in (reads is List ? reads : const [])) {
+          if (r is Map) _noteSeen(r['user_id'], r['last_read_at']);
+        }
+      });
     }
   }
 

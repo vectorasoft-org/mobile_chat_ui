@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'config/chat_config.dart';
+import 'config/chat_sender_roles.dart';
 import 'config/chat_theme.dart';
 import 'config/chat_theme_provider.dart';
 import 'message_bubble.dart';
@@ -339,11 +340,68 @@ class _ChatViewState extends State<ChatView> {
   late FileDownloadHandler _downloadHandler;
   late String _currentUserOfficialCode = 'unknown';
 
+  /// The room's roster by member id: where a sender's role (and their name,
+  /// when a message carries none) comes from. Empty until it loads, and for
+  /// a room whose host lists no members.
+  Map<String, ChatMember> _members = const {};
+
+  void _loadMembers() {
+    _chatConfig.membersProvider
+        ?.call()
+        .then((list) {
+          if (!mounted || list.isEmpty) return;
+          setState(() => _members = {for (final m in list) m.id: m});
+        })
+        .catchError((Object e) {
+          // A room without its roster still reads: names come off the messages.
+          _chatConfig.logger.w('Members unavailable: $e');
+        });
+  }
+
+  /// When another member last read this room (the engine's read cursors).
+  late final ValueListenable<DateTime?> _seenAt =
+      (widget.rxdartAdapter.chatService as RealChatService).seenAt;
+
+  void _onSeenChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// Sent no later than another member's last read.
+  bool _isSeen(Message message) {
+    final seen = _seenAt.value;
+    final sent = DateTime.tryParse(message.createdAt ?? '');
+    return seen != null && sent != null && !sent.isAfter(seen);
+  }
+
+  MessageSender _senderOf(Message message) {
+    final member = _members[message.sender];
+    final roles = _chatConfig.senderRoles;
+    final key = roles.keyOf(member?.role);
+    String? role;
+    if (key.isNotEmpty) {
+      // The host's own text for the role (`role_<key>` in its strings), else
+      // the roster's value made readable.
+      final own = ChatLocalizations.text(context, 'role_$key');
+      role = own == 'role_$key' ? ChatSenderRoles.readable(member!.role!) : own;
+    }
+    final name = [
+      message.author,
+      member?.name,
+    ].firstWhere((n) => n != null && n.trim().isNotEmpty, orElse: () => null);
+    return MessageSender(
+      name: name ?? message.sender,
+      color: roles.colorOf(message.sender, member?.role),
+      role: role,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     // Initialize late final _chatConfig
     _chatConfig = (widget.rxdartAdapter.chatService as RealChatService).config;
+    _loadMembers();
+    _seenAt.addListener(_onSeenChanged);
     _chatConfig.logger.i('ChatView initState - channelId: ${widget.channelId}');
     _scrollController = ScrollController();
     _isAtBottomNotifier = ValueNotifier<bool>(true);
@@ -573,6 +631,7 @@ class _ChatViewState extends State<ChatView> {
 
     // Clean up manually created services
     _recordingController.dispose();
+    _seenAt.removeListener(_onSeenChanged);
 
     super.dispose();
   }
@@ -815,13 +874,12 @@ class _ChatViewState extends State<ChatView> {
                         final isSelf =
                             message.sender == _currentUserOfficialCode;
 
-                        // Show sender name if current sender is different from the NEXT message (newer, below in reverse display)
-                        final nextMessage = index > 0
-                            ? messages[messages.length - index]
-                            : null;
-                        final showSenderName =
-                            nextMessage == null ||
-                            nextMessage.sender != message.sender;
+                        // A run starts where the sender differs from the
+                        // message BEFORE it (older, above in reverse display).
+                        final at = messages.length - 1 - index;
+                        final startsRun =
+                            at == 0 ||
+                            messages[at - 1].sender != message.sender;
 
                         return Column(
                           key: ValueKey('${message.id}_col'),
@@ -833,7 +891,9 @@ class _ChatViewState extends State<ChatView> {
                               child: MessageBubble(
                                 message: message,
                                 isSelf: isSelf,
-                                showSenderName: showSenderName,
+                                startsRun: startsRun,
+                                sender: isSelf ? null : _senderOf(message),
+                                seen: isSelf && _isSeen(message),
                                 onAttachmentTap: (attachment, fileName) =>
                                     _downloadAndOpenFile(
                                       message,
