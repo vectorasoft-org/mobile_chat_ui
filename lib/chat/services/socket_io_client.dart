@@ -73,6 +73,9 @@ class StreamChatSocketIoClient {
             .catchError((_) {});
       }
     });
+    _socket!.onConnect((_) => online.value = true);
+    _socket!.onDisconnect((_) => online.value = false);
+    _socket!.onConnectError((_) => online.value = false);
     _socket!.on('new-message', _handleNewMessage);
     // Plural: the server emits 'deleted-messages' (one event, many ids).
     // The singular name meant mobile never saw a delete.
@@ -87,6 +90,15 @@ class StreamChatSocketIoClient {
     _socket!.connect();
     config.logger.d("[socket] finished connecting");
   }
+
+  /// Is the transport actually up? The outbox asks this before it decides
+  /// whether a message can go now or has to wait for a reconnect.
+  bool get connected => _socket?.connected ?? false;
+
+  /// The same answer as a listenable, so the room can show its "no
+  /// connection" strip the moment the wire drops - before the user types into
+  /// a dead socket, not after.
+  final ValueNotifier<bool> online = ValueNotifier<bool>(false);
 
   void dispose() {
     _socket?.disconnect().clearListeners();

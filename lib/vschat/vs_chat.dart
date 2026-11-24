@@ -7,10 +7,12 @@ import 'package:flutter/material.dart';
 import '../chat/chat_page.dart';
 import '../chat/config/chat_config.dart';
 import '../chat/config/chat_logger.dart';
+import '../chat/config/chat_offline.dart';
 import '../chat/config/chat_sender_roles.dart';
 import '../chat/config/chat_service_listener.dart';
 import '../chat/config/chat_theme.dart';
 import '../chat/models.dart';
+import '../chat/offline/offline_store.dart';
 import '../chat/services/chat_localizations.dart';
 import '../chat/services/chat_reactive_adapter.dart';
 import '../chat/services/chat_service.dart';
@@ -155,6 +157,12 @@ class VSChat {
     final dio = await o.api();
     final channelId = session['channel_id'].toString();
     final known = session['members'];
+    /* One device serves many users in turn. Before anything is read from or
+       written to the offline store, settle whose it is: a different member
+       signing in clears what the previous one left behind. */
+    if (o.offline.enabled) {
+      OfflineStore.noteIdentity(o.storage, session['user_id']?.toString());
+    }
     final config = ChatConfig(
       // Uploads and file bytes go through the host (/chat/resource).
       baseUrl: dio.options.baseUrl.replaceAll(RegExp(r'/+$'), ''),
@@ -179,6 +187,7 @@ class VSChat {
           : _members(known is List ? known : (await post(o.endpoints.members, {'channel_id': channelId}))['data']),
       // No host to upload through: a visitor's composer is text only.
       attachmentsEnabled: o.visitor == null,
+      offline: o.offline,
       senderRoles: o.senderRoles,
       theme: o.theme,
       logger: o.logger,
@@ -208,8 +217,33 @@ class VSChat {
     }
   }
 
-  /// One POST to the host API. Chat is never queued offline: a room opened
-  /// later, when nobody is looking, is worse than a clear error now.
+  /// Forget everything the offline store kept - on every device user, for
+  /// every room - and nothing else. Call it when the member signs out.
+  ///
+  /// The keys are already scoped per user, so one member can never read
+  /// another's; this is about not keeping the previous person's unsent text
+  /// on a shared device at all.
+  static void offlineForget() => OfflineStore.forgetAll(options.storage);
+
+  /// What is still waiting to go out for [channelId], oldest first. For a
+  /// host that wants to show its own "N unsent" badge; empty when the outbox
+  /// is off.
+  static List<QueuedMessage> offlineQueue(String channelId, String userId) =>
+      OfflineStore(
+        storage: options.storage,
+        settings: options.offline,
+        logger: options.logger,
+        userId: userId,
+        channelId: channelId,
+      ).readQueue();
+
+  /// One POST to the host API.
+  ///
+  /// This call is never queued: OPENING a room is a thing other people are
+  /// told about, and a room that appears later, when nobody is looking, is
+  /// worse than a clear error now. [ChatOffline.queue] is a different
+  /// promise - it queues messages into a room the user already has open,
+  /// which nobody has to be newly notified about.
   static Future<Map<String, dynamic>> post(String path, Object body) async {
     try {
       final dio = await options.api();
@@ -482,6 +516,7 @@ class VSChatOptions {
     this.notify,
     this.alerts = const VSChatAlerts(),
     this.senderRoles = const ChatSenderRoles(),
+    this.offline = ChatOffline.off,
     this.overlayContext,
   })  : visitor = null,
         theme = theme ?? ChatTheme.houExpress(),
@@ -506,6 +541,7 @@ class VSChatOptions {
     this.notify,
     this.alerts = const VSChatAlerts(),
     this.senderRoles = const ChatSenderRoles(),
+    this.offline = ChatOffline.off,
     this.overlayContext,
   })  : visitor = VSChatVisitor(baseUrl: baseUrl.replaceAll(RegExp(r'/+$'), ''), key: key),
         api = _visitorApi(baseUrl.replaceAll(RegExp(r'/+$'), '')),
@@ -556,6 +592,18 @@ class VSChatOptions {
 
   /// Where the room keeps its theme choice (in memory by default).
   final ChatStorageAdapter storage;
+
+  /// What survives a dead network: an outbox for the open room, the newest
+  /// page kept for reading, or neither. Both halves are OFF by default, so
+  /// saying nothing here keeps exactly today's behaviour.
+  ///
+  /// Turning either on wants a PERSISTENT [storage]
+  /// ([SharedPreferencesAdapter]): the default store is in memory, so with it
+  /// a queued message does not survive the app being killed.
+  ///
+  /// The web widget takes the same options under the same names
+  /// (`vschat.js`, `cfg.offline`) - one rule, both surfaces.
+  final ChatOffline offline;
 
   /// How [VSChat.start] and [VSChat.reopen] show a room by default.
   final VSChatPresentation presentation;

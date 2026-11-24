@@ -6,6 +6,8 @@ export 'vschat/vs_chat_inbox.dart';
 export 'vschat/vs_chat_widget.dart';
 export 'chat/config/chat_theme.dart' show ChatTheme;
 export 'chat/config/chat_sender_roles.dart' show ChatSenderRoles;
+export 'chat/config/chat_offline.dart' show ChatOffline;
+export 'chat/offline/offline_store.dart' show QueuedMessage;
 export 'chat/config/chat_logger.dart' show ChatLogger, ConsoleLogger;
 export 'chat/storage/api/chat_storage_adapter.dart' show ChatStorageAdapter;
 export 'chat/storage/impl/shared_preferences_adapter.dart' show SharedPreferencesAdapter;

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'chat_logger.dart';
 import '../storage/api/chat_storage_adapter.dart';
 import '../models.dart';
+import 'chat_offline.dart';
 import 'chat_sender_roles.dart';
 import 'chat_theme.dart';
 
@@ -49,6 +50,10 @@ class ChatConfig {
 
   /// The role chip next to a sender's name, and the colour per role.
   final ChatSenderRoles senderRoles;
+
+  /// What survives a dead network: the outbox, the saved page, or neither.
+  /// Both halves are off by default - see [ChatOffline].
+  final ChatOffline offline;
 
   /// Theme Configuration
   final ChatTheme theme;
@@ -185,6 +190,7 @@ class ChatConfig {
     this.membersProvider,
     this.attachmentsEnabled = true,
     this.senderRoles = const ChatSenderRoles(),
+    this.offline = ChatOffline.off,
     required this.theme,
     required this.logger,
     required this.storage,
@@ -218,6 +224,7 @@ class ChatConfig {
     Future<List<ChatMember>> Function()? membersProvider,
     bool? attachmentsEnabled,
     ChatSenderRoles? senderRoles,
+    ChatOffline? offline,
     ChatTheme? theme,
     ChatLogger? logger,
     ChatStorageAdapter? storage,
@@ -238,6 +245,7 @@ class ChatConfig {
       membersProvider: membersProvider ?? this.membersProvider,
       attachmentsEnabled: attachmentsEnabled ?? this.attachmentsEnabled,
       senderRoles: senderRoles ?? this.senderRoles,
+      offline: offline ?? this.offline,
       theme: theme ?? this.theme,
       logger: logger ?? this.logger,
       storage: storage ?? this.storage,

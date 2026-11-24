@@ -85,6 +85,14 @@ const Map<String, Map<String, String>> chatStrings = {
     'notifyNote': 'Everyone in the chat will be notified.',
     // Visitor mode (a public app with no backend): the first message is the start.
     'howCanWeHelp': 'How can we help?',
+    /* Offline (ChatOffline). The same keys and wording as the web widget's
+       cfg.strings, so one message reaches the user on either surface. */
+    'offlineBanner': 'No connection — your messages will send when you are back online.',
+    'offlineQueued': '{n} waiting to send — they go out when you are back online.',
+    'offlineNoAttach': 'Attachments need a connection.',
+    'offlineQueueFull': 'Too many messages are already waiting to send.',
+    'offlineTooOld': 'This message waited too long and was not sent.',
+    'offlineCached': 'Showing saved messages — reconnecting…',
   },
   'km': {
     'inputHint': 'សរសេរសារ',
@@ -162,5 +170,12 @@ const Map<String, Map<String, String>> chatStrings = {
     'detailOptional': 'បន្ថែមព័ត៌មានលម្អិត (មិនចាំបាច់)',
     'notifyNote': 'អ្នកទាំងអស់ក្នុងការជជែកនឹងទទួលបានការជូនដំណឹង។',
     'howCanWeHelp': 'តើយើងអាចជួយអ្នកបានយ៉ាងដូចម្តេច?',
+    // Offline (ChatOffline) - a missing key here falls back to English.
+    'offlineBanner': 'គ្មានការតភ្ជាប់ — សាររបស់អ្នកនឹងផ្ញើនៅពេលមានអ៊ីនធឺណិតវិញ។',
+    'offlineQueued': 'សារ {n} កំពុងរង់ចាំផ្ញើ — នឹងផ្ញើនៅពេលមានអ៊ីនធឺណិតវិញ។',
+    'offlineNoAttach': 'ការភ្ជាប់ឯកសារត្រូវការអ៊ីនធឺណិត។',
+    'offlineQueueFull': 'មានសារច្រើនពេកកំពុងរង់ចាំផ្ញើ។',
+    'offlineTooOld': 'សារនេះរង់ចាំយូរពេក ហើយមិនបានផ្ញើទេ។',
+    'offlineCached': 'កំពុងបង្ហាញសារដែលបានរក្សាទុក — កំពុងតភ្ជាប់ឡើងវិញ…',
   },
 };

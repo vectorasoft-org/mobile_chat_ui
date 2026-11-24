@@ -13,6 +13,7 @@ import '../config/chat_config.dart';
 import '../config/chat_theme.dart';
 import '../config/chat_service_listener.dart';
 import '../models.dart';
+import '../offline/offline_store.dart';
 import 'chat_service.dart';
 import 'http_client.dart';
 
@@ -27,6 +28,10 @@ class RealChatService extends ChatService {
   /// Our own messages heard on the socket while a send from THIS device was
   /// still unconfirmed - see [_handleNewMessage].
   final List<Message> _ownEchoes = [];
+
+  /// One flush at a time: the outbox must go out in order, so two runs
+  /// racing each other would be the one thing it exists to prevent.
+  bool _flushing = false;
   late ChatTheme _selectedTheme;
   late String _channelName;
   late String? _channelId;
@@ -59,6 +64,14 @@ class RealChatService extends ChatService {
 
   /// When another member last read this room - drives the seen ticks.
   ValueListenable<DateTime?> get seenAt => _socketClient.seenAt;
+
+  /// Is the socket up? Drives the room's "no connection" strip, and is public
+  /// so a host can render its own indicator instead.
+  ValueListenable<bool> get online => _socketClient.online;
+
+  /// How many messages are still waiting to go out of this room. 0 when the
+  /// outbox is off.
+  int get queuedCount => _offline.readQueue().length;
 
   @override
   Future<void> initialize() async {
@@ -239,7 +252,128 @@ class RealChatService extends ChatService {
     } catch (e) {
       config.logger.w('[socket] resync after reconnect failed: $e');
     }
+    // History first, then the outbox: what the user wrote while away belongs
+    // in a room that already shows whatever arrived while they were away.
+    await _flushOutbox();
   }
+
+  /* ===================== OFFLINE: the outbox and the cache ==================
+     Both halves are off unless the host asked for them (ChatConfig.offline),
+     and both are scoped to this member and this room - see OfflineStore. */
+
+  /// Built per use: it holds no state of its own, and this way it always
+  /// reflects the room that is open right now.
+  OfflineStore get _offline => OfflineStore(
+        storage: config.storage,
+        settings: config.offline,
+        logger: config.logger,
+        userId: config.resolveUserId(),
+        channelId: _channelId,
+      );
+
+  /// Send what is waiting, oldest first, ONE AT A TIME.
+  ///
+  /// Order is the whole point, so a failure stops the run and leaves the rest
+  /// for the next reconnect. A row past [ChatOffline.maxAge] is dropped
+  /// instead of delivered late - and its bubble goes with it, so nobody is
+  /// left believing it was sent.
+  Future<void> _flushOutbox() async {
+    final off = _offline;
+    if (!off.queueOn || _flushing) return;
+    _flushing = true;
+    try {
+      while (_socketClient.connected) {
+        final rows = off.readQueue();
+        if (rows.isEmpty) break;
+        final row = rows.first;
+        if (off.tooOld(row)) {
+          off.drop(row.nonce);
+          _messagesCache.removeWhere((m) => m.id == row.nonce);
+          _notifyMessagesChanged();
+          config.logger
+              .w('[offline] dropped a message that waited past maxAge');
+          continue;
+        }
+        try {
+          final res = await _socketClient.sendMessage(text: row.text);
+          final data = res['data'] as Map<String, dynamic>? ?? res;
+          final sentAt =
+              data['sent_at']?.toString() ?? DateTime.now().toIso8601String();
+          off.drop(row.nonce);
+          final confirmed = Message(
+            id: data['message_id']?.toString() ?? row.nonce,
+            sender: config.resolveUserId() ?? row.nonce,
+            text: row.text,
+            isSending: false,
+            createdAt: sentAt,
+            updatedAt: sentAt,
+            isDeleted: false,
+          );
+          final i = _messagesCache.indexWhere((m) => m.id == row.nonce);
+          if (i >= 0) {
+            _messagesCache[i] = confirmed;
+          } else {
+            _messagesCache.add(confirmed);
+          }
+          _notifyMessagesChanged();
+        } catch (e) {
+          /* It may well have ARRIVED and only the ack been lost - chat-service
+             does not recognise `client_nonce` yet, so sending again is how a
+             duplicate is born. The run stops, the row stays queued, and the
+             user can see it is still waiting. */
+          config.logger.w('[offline] flush stopped at a failed send: $e');
+          break;
+        }
+      }
+    } finally {
+      _flushing = false;
+    }
+  }
+
+  /// Re-add the still-unsent rows after the message cache was replaced, so a
+  /// reconnect never looks like the user's queued text had vanished.
+  void _restoreQueuedGhosts() {
+    final off = _offline;
+    if (!off.queueOn) return;
+    final userId = config.resolveUserId() ?? 'unknown';
+    for (final row in off.readQueue()) {
+      if (_messagesCache.any((m) => m.id == row.nonce)) continue;
+      _messagesCache.add(
+        Message(
+          id: row.nonce,
+          sender: userId,
+          text: row.text,
+          isSending: true,
+          createdAt: row.at.toIso8601String(),
+          updatedAt: row.at.toIso8601String(),
+          isDeleted: false,
+        ),
+      );
+    }
+  }
+
+  /// What the cache keeps: only what a bubble needs to render.
+  ///
+  /// Attachments are left out ON PURPOSE. Their bytes are not on the device,
+  /// so a saved image would come back as a broken thumbnail - which reads as
+  /// data loss, and is worse than the message simply not being there yet.
+  Map<String, dynamic> _cacheRow(Message m) => {
+        'id': m.id,
+        'sender': m.sender,
+        'author': m.author,
+        'text': m.text,
+        'created_at': m.createdAt,
+        'updated_at': m.updatedAt,
+      };
+
+  Message _messageFromCache(Map<String, dynamic> r) => Message(
+        id: r['id']?.toString() ?? '',
+        sender: r['sender']?.toString() ?? 'unknown',
+        author: r['author']?.toString(),
+        text: r['text']?.toString(),
+        createdAt: r['created_at']?.toString(),
+        updatedAt: r['updated_at']?.toString(),
+      );
 
   void _handleDeletedMessages(List<String> messageIds) {
     bool didChange = false;
@@ -325,10 +459,18 @@ class RealChatService extends ChatService {
         );
         _messagesCache.clear();
         _messagesCache.addAll(newMessages);
+        // Keep the newest page for an offline open, put back whatever is
+        // still unsent, and try the outbox now that the wire clearly works.
+        final off = _offline;
+        if (off.cacheOn) {
+          off.writeCache([for (final m in newMessages) _cacheRow(m)]);
+        }
+        _restoreQueuedGhosts();
         _notifyMessagesChanged();
         config.logger.i(
           'Cache updated. Current cache size: ${_messagesCache.length}',
         );
+        _flushOutbox();
         return newMessages;
       }
 
@@ -354,6 +496,24 @@ class RealChatService extends ChatService {
       return newMessages;
     } catch (e) {
       config.logger.e('Error fetching messages', error: e);
+      /* No wire, but a saved page: show it rather than leave the room empty.
+         Only on the INITIAL load - a failed pagination request must never
+         masquerade as older history. The cache is a stand-in, so the next
+         fetch that succeeds replaces it. */
+      final off = _offline;
+      if (getMessageOpt == null && off.cacheOn) {
+        final saved = off.readCache();
+        if (saved != null) {
+          final rows = [for (final r in saved) _messageFromCache(r)];
+          _messagesCache
+            ..clear()
+            ..addAll(rows);
+          _restoreQueuedGhosts();
+          _notifyMessagesChanged();
+          config.logger.i('[offline] served ${rows.length} saved messages');
+          return rows;
+        }
+      }
       rethrow;
     }
   }
@@ -371,6 +531,36 @@ class RealChatService extends ChatService {
       final userId = _requireUserId();
 
       config.logger.i('Sending message as $userId');
+
+      /* OFFLINE. With the wire down and the outbox on, the text is stored and
+         shown as still-sending - and deliberately NEVER put on the socket.
+         That is precisely what makes the later flush safe to replay: nothing
+         was emitted, so nothing can arrive twice. A full outbox is reported,
+         never silently dropped. */
+      final off = _offline;
+      if (off.queueOn && !_socketClient.connected) {
+        final row = off.enqueue(messageText);
+        if (row == null) {
+          throw Exception(
+            'Nothing is waiting to be sent for you right now, but the offline '
+            'outbox is full (${config.offline.maxQueued}); message not kept.',
+          );
+        }
+        _messagesCache.add(
+          Message(
+            id: row.nonce,
+            sender: userId,
+            text: messageText,
+            isSending: true,
+            createdAt: row.at.toIso8601String(),
+            updatedAt: row.at.toIso8601String(),
+            isDeleted: false,
+          ),
+        );
+        _notifyMessagesChanged();
+        config.logger.i('[offline] held a message for the next reconnect');
+        return;
+      }
 
       // Create ghost message immediately with temporary ID (optimistic UI update)
       // This appears in the UI immediately with reduced opacity

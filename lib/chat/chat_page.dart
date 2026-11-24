@@ -362,6 +362,37 @@ class _ChatViewState extends State<ChatView> {
   late final ValueListenable<DateTime?> _seenAt =
       (widget.rxdartAdapter.chatService as RealChatService).seenAt;
 
+  /// Whether the socket is up - drives the offline strip. Same cast as
+  /// [_seenAt]: the room is only ever built over a [RealChatService].
+  late final ValueListenable<bool> _online =
+      (widget.rxdartAdapter.chatService as RealChatService).online;
+
+  /// The strip above the composer while the wire is down. It carries the
+  /// count so the user can see nothing was swallowed, and it is drawn from
+  /// the theme rather than from literal colours.
+  Widget _buildOfflineStrip() {
+    final theme = _chatConfig.theme;
+    final queued =
+        (widget.rxdartAdapter.chatService as RealChatService).queuedCount;
+    final text = queued > 0
+        ? ChatLocalizations.text(context, 'offlineQueued')
+            .replaceAll('{n}', '$queued')
+        : ChatLocalizations.text(context, 'offlineBanner');
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 7.h),
+      decoration: BoxDecoration(
+        color: theme.inputBarBackground,
+        border: Border(top: BorderSide(color: theme.inputBorder)),
+      ),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 12.sp, color: theme.messageTimestamp),
+      ),
+    );
+  }
+
   void _onSeenChanged() {
     if (mounted) setState(() {});
   }
@@ -2183,6 +2214,15 @@ class _ChatViewState extends State<ChatView> {
                   ),
                 ),
               ),
+            ),
+          /* "No connection", but only when the host asked for an offline
+             switch: without one the room behaves exactly as it always has,
+             and a strip would be announcing a feature that is not on. */
+          if (_chatConfig.offline.enabled && _chatConfig.offline.banner)
+            ValueListenableBuilder<bool>(
+              valueListenable: _online,
+              builder: (context, up, _) =>
+                  up ? const SizedBox.shrink() : _buildOfflineStrip(),
             ),
           // Text input and buttons - isolated widget with its own state
           ChatInputSection(
